@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(() => {
     const getUser = async () => {
@@ -15,7 +17,6 @@ export function useAuth() {
       setUser(user)
       setLoading(false)
     }
-
     getUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -24,15 +25,11 @@ export function useAuth() {
         setLoading(false)
       }
     )
-
     return () => subscription.unsubscribe()
   }, [supabase.auth])
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     return { data, error }
   }
 
@@ -41,5 +38,10 @@ export function useAuth() {
     return { error }
   }
 
-  return { user, loading, signIn, signOut }
+  const logout = async () => {
+    await signOut()
+    router.push('/')
+  }
+
+  return { user, loading, signIn, signOut, logout }
 }

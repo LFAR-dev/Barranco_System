@@ -16,7 +16,9 @@ import {
   Package,
   ClipboardList,
   ShoppingCart,
-  GlassWater
+  UserCog,
+  UserCheck,
+  Table
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -35,6 +37,7 @@ import {
   Pie,
   Cell,
 } from 'recharts'
+import { useAuth } from '@/hooks/useAuth'
 
 const salesData = [
   { time: '09:00', ventas: 2000 },
@@ -94,6 +97,7 @@ const alerts = [
 ]
 
 export default function AdminDashboardPage() {
+  const { logout } = useAuth()
   const [greeting, setGreeting] = useState('')
 
   useEffect(() => {
@@ -114,9 +118,7 @@ export default function AdminDashboardPage() {
               </Button>
               <div className="flex items-center ml-2 lg:ml-0">
                 <span className="text-xl font-bold text-gray-900">BARRANCO</span>
-                <span className="ml-2 text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                  Admin
-                </span>
+                <span className="ml-2 text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-1 rounded-full">Admin</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -135,7 +137,7 @@ export default function AdminDashboardPage() {
               <Avatar className="cursor-pointer">
                 <AvatarFallback className="bg-blue-600 text-white">AD</AvatarFallback>
               </Avatar>
-              <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
+              <Button variant="ghost" size="sm" onClick={logout} className="text-gray-600 hover:text-gray-900">
                 <LogOut className="h-4 w-4 mr-1" />
                 Salir
               </Button>
@@ -146,69 +148,85 @@ export default function AdminDashboardPage() {
 
       <main className="px-4 sm:px-6 lg:px-8 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">
-            {greeting}, Administrador
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900">{greeting}, Administrador</h1>
           <p className="text-gray-500">Resumen general del sistema</p>
         </div>
 
-        {/* Navegación rápida */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           <Link href="/admin/inventory">
             <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-100 bg-blue-50/50">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Package className="h-5 w-5 text-blue-600" />
+              <CardContent className="p-3 flex items-center gap-2">
+                <div className="p-1.5 bg-blue-100 rounded-lg">
+                  <Package className="h-4 w-4 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Inventario</p>
-                  <p className="text-xs text-gray-500">Gestionar productos</p>
+                  <p className="text-xs font-medium text-gray-900">Inventario</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/admin/recipes">
             <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-100 bg-green-50/50">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <ClipboardList className="h-5 w-5 text-green-600" />
+              <CardContent className="p-3 flex items-center gap-2">
+                <div className="p-1.5 bg-green-100 rounded-lg">
+                  <ClipboardList className="h-4 w-4 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Recetas</p>
-                  <p className="text-xs text-gray-500">Ver recetas</p>
+                  <p className="text-xs font-medium text-gray-900">Recetas</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/admin/sales">
             <Card className="hover:shadow-md transition-shadow cursor-pointer border-purple-100 bg-purple-50/50">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <ShoppingCart className="h-5 w-5 text-purple-600" />
+              <CardContent className="p-3 flex items-center gap-2">
+                <div className="p-1.5 bg-purple-100 rounded-lg">
+                  <ShoppingCart className="h-4 w-4 text-purple-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Ventas</p>
-                  <p className="text-xs text-gray-500">Historial de ventas</p>
+                  <p className="text-xs font-medium text-gray-900">Ventas</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/admin/bartenders">
             <Card className="hover:shadow-md transition-shadow cursor-pointer border-orange-100 bg-orange-50/50">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Users className="h-5 w-5 text-orange-600" />
+              <CardContent className="p-3 flex items-center gap-2">
+                <div className="p-1.5 bg-orange-100 rounded-lg">
+                  <UserCog className="h-4 w-4 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Bartenders</p>
-                  <p className="text-xs text-gray-500">Gestionar equipo</p>
+                  <p className="text-xs font-medium text-gray-900">Bartenders</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/meseros">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-teal-100 bg-teal-50/50">
+              <CardContent className="p-3 flex items-center gap-2">
+                <div className="p-1.5 bg-teal-100 rounded-lg">
+                  <UserCheck className="h-4 w-4 text-teal-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-900">Meseros</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/mesas">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-rose-100 bg-rose-50/50">
+              <CardContent className="p-3 flex items-center gap-2">
+                <div className="p-1.5 bg-rose-100 rounded-lg">
+                  <Table className="h-4 w-4 text-rose-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-900">Mesas</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
         </div>
 
-        {/* Stats cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Card>
             <CardContent className="pt-6">
@@ -287,7 +305,6 @@ export default function AdminDashboardPage() {
           </Card>
         </div>
 
-        {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           <Card className="lg:col-span-2">
             <CardHeader>
@@ -332,7 +349,6 @@ export default function AdminDashboardPage() {
           </Card>
         </div>
 
-        {/* Bottom */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>

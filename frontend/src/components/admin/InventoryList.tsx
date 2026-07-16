@@ -151,8 +151,8 @@ export default function InventoryList() {
           onChange={(e) => setFilterCategory(e.target.value)}
         >
           {categories.map(cat => (
-            <option key={cat} value={cat}>
-              {cat === 'todos' ? 'Todas las categorías' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+            <option key={cat ?? 'todos'} value={cat ?? 'todos'}>
+              {(cat ?? 'todos') === 'todos' ? 'Todas las categorías' : String(cat).charAt(0).toUpperCase() + String(cat).slice(1)}
             </option>
           ))}
         </select>

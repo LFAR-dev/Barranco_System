@@ -18,8 +18,7 @@ import {
   Beer,
   Coffee,
   GlassWater,
-  Ice,
-  Lemon,
+  Leaf,
   Apple,
   Utensils,
   Droplet
@@ -44,7 +43,6 @@ const categoryIcons: Record<string, any> = {
   'cerveza': Beer,
   'refresco': Droplet,
   'insumo': Package,
-  'garnish': Lemon,
   'shots': GlassWater,
   'pack': Package,
   'material': Utensils,

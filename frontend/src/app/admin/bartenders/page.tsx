@@ -3,41 +3,25 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { 
-  Search, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Users,
-  ArrowLeft,
-  RefreshCw,
-  Star,
-  User,
-  Coffee,
-  TrendingUp
+  Search, Users, ArrowLeft, RefreshCw, Star, User, 
+  CheckCircle, XCircle, Key, Clock, Eye
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { useAuth } from '@/hooks/useAuth'
+import { userService } from '@/lib/services/userService'
 import { createClient } from '@/lib/supabase/client'
 
-interface Bartender {
-  id: string
-  nombre_completo: string
-  codigo: string
-  activo: boolean
-  ventas_totales: number
-  bebidas_preparadas: number
-  calificacion_eficiencia: number
-  usuario_id: string
-}
-
 export default function BartendersPage() {
+  const { user } = useAuth()
   const supabase = createClient()
-  const [bartenders, setBartenders] = useState<Bartender[]>([])
+  const [bartenders, setBartenders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   useEffect(() => {
     fetchBartenders()
@@ -46,18 +30,41 @@ export default function BartendersPage() {
   const fetchBartenders = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('bartenders')
-        .select('*')
-        .eq('activo', true)
-        .order('nombre_completo')
-
-      if (error) throw error
+      const data = await userService.getBartenders()
       setBartenders(data || [])
     } catch (error) {
       console.error('Error fetching bartenders:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAutorizar = async (usuarioId: string) => {
+    if (!user) return
+    setActionLoading(usuarioId)
+    try {
+      const codigo = await userService.autorizarUsuario(usuarioId, user.id)
+      alert(`✅ Código generado: ${codigo}\nCompártelo con el bartender para que inicie sesión.`)
+      await fetchBartenders()
+    } catch (error) {
+      alert('Error al autorizar el usuario')
+      console.error(error)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleDesactivar = async (usuarioId: string) => {
+    if (!confirm('¿Desactivar este usuario?')) return
+    setActionLoading(usuarioId)
+    try {
+      await userService.desactivarUsuario(usuarioId)
+      await fetchBartenders()
+    } catch (error) {
+      alert('Error al desactivar el usuario')
+      console.error(error)
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -70,9 +77,10 @@ export default function BartendersPage() {
     return colors[index % colors.length]
   }
 
-  const filteredBartenders = bartenders.filter(bartender =>
-    bartender.nombre_completo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    bartender.codigo?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredBartenders = bartenders.filter(b =>
+    b.nombre_completo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    b.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    b.usuarios?.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   if (loading) {
@@ -89,25 +97,20 @@ export default function BartendersPage() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <Link href="/admin">
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Volver
               </Button>
             </Link>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Bartenders</h1>
-              <p className="text-sm text-gray-500">Gestiona el equipo de bartenders</p>
+              <p className="text-sm text-gray-500">Gestiona el equipo y autoriza accesos</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button className="bg-purple-600 hover:bg-purple-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Nuevo Bartender
-            </Button>
-            <Button variant="outline" onClick={fetchBartenders}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button variant="outline" onClick={fetchBartenders}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Actualizar
+          </Button>
         </div>
 
         <div className="relative mb-6">
@@ -121,61 +124,127 @@ export default function BartendersPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredBartenders.map((bartender, index) => (
-            <Card key={bartender.id} className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <Avatar className={`h-12 w-12 ${getColor(index)}`}>
-                    <AvatarFallback className="text-white text-sm font-semibold">
-                      {getInitials(bartender.nombre_completo)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-gray-900">{bartender.nombre_completo}</h3>
-                      <Badge className={bartender.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                        {bartender.activo ? 'Activo' : 'Inactivo'}
-                      </Badge>
+          {filteredBartenders.map((bartender, index) => {
+            const usuario = bartender.usuarios || {}
+            const isActivo = usuario.activo
+            const tieneCodigo = usuario.codigo_acceso
+            const codigoExpiracion = usuario.codigo_expiracion
+              ? new Date(usuario.codigo_expiracion)
+              : null
+            const isExpirado = codigoExpiracion && codigoExpiracion < new Date()
+
+            return (
+              <Card key={bartender.id} className={`hover:shadow-lg transition-shadow border-t-4 ${
+                isActivo ? 'border-t-green-500' : 'border-t-red-500'
+              }`}>
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <Avatar className={`h-14 w-14 ${getColor(index)}`}>
+                      {usuario.avatar_url ? (
+                        <AvatarImage src={usuario.avatar_url} alt={bartender.nombre_completo} />
+                      ) : null}
+                      <AvatarFallback className="text-white text-lg font-semibold">
+                        {getInitials(bartender.nombre_completo)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-gray-900">{bartender.nombre_completo}</h3>
+                        <Badge className={isActivo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                          {isActivo ? 'Activo' : 'Inactivo'}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-500">Código: {bartender.codigo || 'N/A'}</p>
+                      <p className="text-xs text-gray-400">{usuario.email}</p>
+                      {tieneCodigo && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <Key className="h-3 w-3 text-green-600" />
+                          <span className="text-xs text-green-600 font-mono">{tieneCodigo}</span>
+                          <span className="text-xs text-gray-400">
+                            {isExpirado ? '(Expirado)' : `Expira: ${codigoExpiracion?.toLocaleTimeString()}`}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-sm text-gray-500">Código: {bartender.codigo || 'N/A'}</p>
                   </div>
-                </div>
 
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <div className="text-center p-2 bg-blue-50 rounded-lg">
-                    <p className="text-xs text-gray-500">Ventas</p>
-                    <p className="text-sm font-bold text-gray-900">${bartender.ventas_totales?.toFixed(0) || 0}</p>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="text-center p-2 bg-blue-50 rounded-lg">
+                      <p className="text-xs text-gray-500">Ventas</p>
+                      <p className="text-sm font-bold text-gray-900">${bartender.ventas_totales?.toFixed(0) || 0}</p>
+                    </div>
+                    <div className="text-center p-2 bg-green-50 rounded-lg">
+                      <p className="text-xs text-gray-500">Bebidas</p>
+                      <p className="text-sm font-bold text-gray-900">{bartender.bebidas_preparadas || 0}</p>
+                    </div>
+                    <div className="text-center p-2 bg-purple-50 rounded-lg">
+                      <p className="text-xs text-gray-500">Eficiencia</p>
+                      <p className="text-sm font-bold text-gray-900">{bartender.calificacion_eficiencia?.toFixed(0) || 0}%</p>
+                    </div>
                   </div>
-                  <div className="text-center p-2 bg-green-50 rounded-lg">
-                    <p className="text-xs text-gray-500">Bebidas</p>
-                    <p className="text-sm font-bold text-gray-900">{bartender.bebidas_preparadas || 0}</p>
-                  </div>
-                  <div className="text-center p-2 bg-purple-50 rounded-lg">
-                    <p className="text-xs text-gray-500">Eficiencia</p>
-                    <p className="text-sm font-bold text-gray-900">{bartender.calificacion_eficiencia?.toFixed(0) || 0}%</p>
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                  <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
-                    <span className="text-sm text-gray-600">
-                      {bartender.calificacion_eficiencia > 90 ? 'Excelente' :
-                       bartender.calificacion_eficiencia > 70 ? 'Bueno' : 'Mejorable'}
-                    </span>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                      <span className="text-sm text-gray-600">
+                        {bartender.calificacion_eficiencia > 90 ? 'Excelente' :
+                         bartender.calificacion_eficiencia > 70 ? 'Bueno' : 'Mejorable'}
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      {isActivo ? (
+                        <>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="text-green-600 border-green-200 hover:bg-green-50"
+                            onClick={() => handleAutorizar(usuario.id)}
+                            disabled={actionLoading === usuario.id}
+                          >
+                            {actionLoading === usuario.id ? (
+                              <div className="animate-spin h-3 w-3 border-2 border-green-600 border-t-transparent rounded-full" />
+                            ) : (
+                              <>
+                                <Key className="h-3 w-3 mr-1" />
+                                Autorizar
+                              </>
+                            )}
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => handleDesactivar(usuario.id)}
+                            disabled={actionLoading === usuario.id}
+                          >
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Desactivar
+                          </Button>
+                        </>
+                      ) : (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                          onClick={() => handleAutorizar(usuario.id)}
+                          disabled={actionLoading === usuario.id}
+                        >
+                          {actionLoading === usuario.id ? (
+                            <div className="animate-spin h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full" />
+                          ) : (
+                            <>
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Reactivar
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 hover:text-red-700">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
 
         {filteredBartenders.length === 0 && (
