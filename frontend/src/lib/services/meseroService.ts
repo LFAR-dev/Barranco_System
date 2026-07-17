@@ -17,7 +17,7 @@ export interface Mesero {
 }
 
 export const meseroService = {
-  async getAll() {
+  async getAll(): Promise<Mesero[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('meseros')
@@ -40,13 +40,14 @@ export const meseroService = {
     })) as Mesero[]
   },
 
-  async getById(id: string) {
+  async getById(id: string): Promise<Mesero | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('meseros')
       .select(`
         *,
         usuarios (
+          id,
           email,
           phone_number,
           avatar_url
@@ -55,21 +56,23 @@ export const meseroService = {
       .eq('id', id)
       .maybeSingle()
     if (error) throw error
+    if (!data) return null
     return {
       ...data,
-      email: data?.usuarios?.email,
-      phone_number: data?.usuarios?.phone_number,
-      avatar_url: data?.usuarios?.avatar_url
+      email: data.usuarios?.email,
+      phone_number: data.usuarios?.phone_number,
+      avatar_url: data.usuarios?.avatar_url
     } as Mesero
   },
 
-  async getByUsuarioId(usuarioId: string) {
+  async getByUsuarioId(usuarioId: string): Promise<Mesero | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('meseros')
       .select(`
         *,
         usuarios (
+          id,
           email,
           phone_number,
           avatar_url
@@ -78,15 +81,16 @@ export const meseroService = {
       .eq('usuario_id', usuarioId)
       .maybeSingle()
     if (error) throw error
+    if (!data) return null
     return {
       ...data,
-      email: data?.usuarios?.email,
-      phone_number: data?.usuarios?.phone_number,
-      avatar_url: data?.usuarios?.avatar_url
+      email: data.usuarios?.email,
+      phone_number: data.usuarios?.phone_number,
+      avatar_url: data.usuarios?.avatar_url
     } as Mesero
   },
 
-  async create(mesero: any) {
+  async create(mesero: any): Promise<Mesero> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('meseros')
@@ -97,7 +101,7 @@ export const meseroService = {
     return data as Mesero
   },
 
-  async update(id: string, mesero: any) {
+  async update(id: string, mesero: any): Promise<Mesero> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('meseros')
@@ -109,7 +113,7 @@ export const meseroService = {
     return data as Mesero
   },
 
-  async delete(id: string) {
+  async delete(id: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase
       .from('meseros')
@@ -118,7 +122,7 @@ export const meseroService = {
     if (error) throw error
   },
 
-  async uploadFoto(file: File, meseroId: string) {
+  async uploadFoto(file: File, meseroId: string): Promise<string> {
     const supabase = createClient()
     const path = `meseros/${meseroId}/${Date.now()}_${file.name}`
     const { error } = await supabase.storage
@@ -134,8 +138,8 @@ export const meseroService = {
     return urlData.publicUrl
   },
 
-  // Funciones para mesas y pedidos (del dashboard de mesero)
-  async getMesas() {
+  // Funciones para mesas y pedidos
+  async getMesas(): Promise<any[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('mesas')
@@ -146,7 +150,7 @@ export const meseroService = {
     return data
   },
 
-  async getPedidoActivoByMesa(mesaId: string) {
+  async getPedidoActivoByMesa(mesaId: string): Promise<any | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('pedidos_activos')
@@ -158,7 +162,7 @@ export const meseroService = {
     return data
   },
 
-  async getPedidosByMesero(meseroId: string) {
+  async getPedidosByMesero(meseroId: string): Promise<any[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('pedidos_activos')
@@ -172,7 +176,7 @@ export const meseroService = {
     return data
   },
 
-  async crearPedido(pedido: any) {
+  async crearPedido(pedido: any): Promise<any> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('pedidos_activos')
@@ -183,7 +187,7 @@ export const meseroService = {
     return data
   },
 
-  async actualizarPedido(id: string, updates: any) {
+  async actualizarPedido(id: string, updates: any): Promise<any> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('pedidos_activos')
@@ -195,7 +199,7 @@ export const meseroService = {
     return data
   },
 
-  async enviarPedido(id: string) {
+  async enviarPedido(id: string): Promise<any> {
     const supabase = createClient()
     const pedido = await this.getPedidoById(id)
     if (!pedido) throw new Error('Pedido no encontrado')
@@ -208,11 +212,13 @@ export const meseroService = {
       .maybeSingle()
     if (error) throw error
     
+    const mesa = await this.getMesaById(pedido.mesa_id)
+    
     await supabase
       .from('pedidos')
       .insert([{
         mesero_id: pedido.mesero_id,
-        mesa: (await this.getMesaById(pedido.mesa_id)).numero,
+        mesa: mesa?.numero || 'N/A',
         items: pedido.items,
         total: pedido.total,
         estado: 'pendiente'
@@ -221,7 +227,7 @@ export const meseroService = {
     return data
   },
 
-  async getPedidoById(id: string) {
+  async getPedidoById(id: string): Promise<any | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('pedidos_activos')
@@ -232,7 +238,7 @@ export const meseroService = {
     return data
   },
 
-  async getMesaById(id: string) {
+  async getMesaById(id: string): Promise<any | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('mesas')
@@ -243,7 +249,7 @@ export const meseroService = {
     return data
   },
 
-  async getNotificaciones(meseroId: string, soloNoLeidas = false) {
+  async getNotificaciones(meseroId: string, soloNoLeidas = false): Promise<any[]> {
     const supabase = createClient()
     let query = supabase
       .from('notificaciones_mesero')
@@ -258,7 +264,7 @@ export const meseroService = {
     return data
   },
 
-  async crearNotificacion(meseroId: string, mesaId: string | null, tipo: string, mensaje: string) {
+  async crearNotificacion(meseroId: string, mesaId: string | null, tipo: string, mensaje: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase
       .from('notificaciones_mesero')

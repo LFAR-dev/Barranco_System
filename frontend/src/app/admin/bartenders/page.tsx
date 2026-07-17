@@ -1,19 +1,39 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { 
   Search, Users, ArrowLeft, RefreshCw, Star, User, 
-  CheckCircle, XCircle, Key, Clock, Eye
+  CheckCircle, XCircle, Key, Clock, Eye, Plus,
+  Edit, Trash2, Camera, DollarSign, TrendingUp, Award
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Progress } from '@/components/ui/progress'
 import { useAuth } from '@/hooks/useAuth'
 import { userService } from '@/lib/services/userService'
 import { createClient } from '@/lib/supabase/client'
+import BartenderForm from '@/components/admin/BartenderForm'
 
 export default function BartendersPage() {
   const { user } = useAuth()
@@ -22,6 +42,12 @@ export default function BartendersPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [selectedBartender, setSelectedBartender] = useState<any>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchBartenders()
@@ -68,13 +94,60 @@ export default function BartendersPage() {
     }
   }
 
+  const handleActivar = async (usuarioId: string) => {
+    setActionLoading(usuarioId)
+    try {
+      await userService.activarUsuario(usuarioId)
+      await fetchBartenders()
+    } catch (error) {
+      alert('Error al activar el usuario')
+      console.error(error)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!selectedBartender) return
+    try {
+      await userService.deleteBartender(selectedBartender.id)
+      await fetchBartenders()
+      setIsDeleteDialogOpen(false)
+      setSelectedBartender(null)
+    } catch (error) {
+      alert('Error al eliminar el bartender')
+      console.error(error)
+    }
+  }
+
+  const handleUploadImage = async (bartenderId: string, file: File) => {
+    setUploadingImage(bartenderId)
+    try {
+      const url = await userService.uploadBartenderFoto(file, bartenderId)
+      await userService.updateBartender(bartenderId, { foto_url: url })
+      await fetchBartenders()
+    } catch (error) {
+      alert('Error al subir la imagen')
+      console.error(error)
+    } finally {
+      setUploadingImage(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   }
 
   const getColor = (index: number) => {
-    const colors = ['bg-blue-600', 'bg-green-600', 'bg-purple-600', 'bg-orange-600', 'bg-red-600', 'bg-teal-600']
+    const colors = ['bg-blue-600', 'bg-green-600', 'bg-purple-600', 'bg-orange-600', 'bg-red-600', 'bg-teal-600', 'bg-pink-600']
     return colors[index % colors.length]
+  }
+
+  const getEfficiencyColor = (value: number) => {
+    if (value >= 90) return 'text-green-600'
+    if (value >= 70) return 'text-yellow-600'
+    return 'text-red-600'
   }
 
   const filteredBartenders = bartenders.filter(b =>
@@ -86,7 +159,7 @@ export default function BartendersPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
       </div>
     )
   }
@@ -94,7 +167,7 @@ export default function BartendersPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
             <Link href="/admin">
               <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
@@ -104,19 +177,43 @@ export default function BartendersPage() {
             </Link>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Bartenders</h1>
-              <p className="text-sm text-gray-500">Gestiona el equipo y autoriza accesos</p>
+              <p className="text-sm text-gray-500">Gestiona el equipo de bartenders</p>
             </div>
           </div>
-          <Button variant="outline" onClick={fetchBartenders}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Actualizar
-          </Button>
+          <div className="flex gap-2">
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-green-600 hover:bg-green-700">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nuevo Bartender
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <User className="h-5 w-5" />
+                    Crear Nuevo Bartender
+                  </DialogTitle>
+                </DialogHeader>
+                <BartenderForm
+                  onSuccess={() => {
+                    setIsDialogOpen(false)
+                    fetchBartenders()
+                  }}
+                  onCancel={() => setIsDialogOpen(false)}
+                />
+              </DialogContent>
+            </Dialog>
+            <Button variant="outline" onClick={fetchBartenders}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="relative mb-6">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           <Input
-            placeholder="Buscar bartenders..."
+            placeholder="Buscar bartenders por nombre, código o email..."
             className="pl-9"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -132,30 +229,59 @@ export default function BartendersPage() {
               ? new Date(usuario.codigo_expiracion)
               : null
             const isExpirado = codigoExpiracion && codigoExpiracion < new Date()
+            const eficiencia = bartender.calificacion_eficiencia || 0
 
             return (
-              <Card key={bartender.id} className={`hover:shadow-lg transition-shadow border-t-4 ${
+              <Card key={bartender.id} className={`hover:shadow-lg transition-all duration-300 border-t-4 ${
                 isActivo ? 'border-t-green-500' : 'border-t-red-500'
               }`}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <Avatar className={`h-14 w-14 ${getColor(index)}`}>
-                      {usuario.avatar_url ? (
-                        <AvatarImage src={usuario.avatar_url} alt={bartender.nombre_completo} />
-                      ) : null}
-                      <AvatarFallback className="text-white text-lg font-semibold">
-                        {getInitials(bartender.nombre_completo)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
+                    <div className="relative group">
+                      <Avatar className={`h-16 w-16 ${getColor(index)}`}>
+                        {bartender.foto_url ? (
+                          <AvatarImage src={bartender.foto_url} alt={bartender.nombre_completo} />
+                        ) : usuario.avatar_url ? (
+                          <AvatarImage src={usuario.avatar_url} alt={bartender.nombre_completo} />
+                        ) : null}
+                        <AvatarFallback className="text-white text-lg font-semibold">
+                          {getInitials(bartender.nombre_completo)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleUploadImage(bartender.id, e.target.files[0])
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="absolute -bottom-1 -right-1 h-6 w-6 p-0 rounded-full bg-white shadow-md hover:bg-gray-50"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingImage === bartender.id}
+                      >
+                        {uploadingImage === bartender.id ? (
+                          <div className="h-3 w-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Camera className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-gray-900">{bartender.nombre_completo}</h3>
+                        <h3 className="font-semibold text-gray-900 truncate">{bartender.nombre_completo}</h3>
                         <Badge className={isActivo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
                           {isActivo ? 'Activo' : 'Inactivo'}
                         </Badge>
                       </div>
                       <p className="text-sm text-gray-500">Código: {bartender.codigo || 'N/A'}</p>
-                      <p className="text-xs text-gray-400">{usuario.email}</p>
+                      <p className="text-xs text-gray-400 truncate">{usuario.email}</p>
                       {tieneCodigo && (
                         <div className="flex items-center gap-1 mt-1">
                           <Key className="h-3 w-3 text-green-600" />
@@ -170,25 +296,39 @@ export default function BartendersPage() {
 
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     <div className="text-center p-2 bg-blue-50 rounded-lg">
+                      <DollarSign className="h-4 w-4 text-blue-600 mx-auto" />
                       <p className="text-xs text-gray-500">Ventas</p>
                       <p className="text-sm font-bold text-gray-900">${bartender.ventas_totales?.toFixed(0) || 0}</p>
                     </div>
                     <div className="text-center p-2 bg-green-50 rounded-lg">
+                      <TrendingUp className="h-4 w-4 text-green-600 mx-auto" />
                       <p className="text-xs text-gray-500">Bebidas</p>
                       <p className="text-sm font-bold text-gray-900">{bartender.bebidas_preparadas || 0}</p>
                     </div>
                     <div className="text-center p-2 bg-purple-50 rounded-lg">
+                      <Award className="h-4 w-4 text-purple-600 mx-auto" />
                       <p className="text-xs text-gray-500">Eficiencia</p>
-                      <p className="text-sm font-bold text-gray-900">{bartender.calificacion_eficiencia?.toFixed(0) || 0}%</p>
+                      <p className={`text-sm font-bold ${getEfficiencyColor(eficiencia)}`}>
+                        {eficiencia.toFixed(0)}%
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <Progress value={Math.min(eficiencia, 100)} className="h-1.5" />
+                    <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                      <span>Rendimiento</span>
+                      <span className="font-medium">
+                        {eficiencia >= 90 ? '🌟 Excelente' : eficiencia >= 70 ? '👍 Bueno' : '📈 Mejorable'}
+                      </span>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between mt-3 pt-3 border-t">
                     <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                      <Star className={`h-4 w-4 ${eficiencia >= 90 ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} />
                       <span className="text-sm text-gray-600">
-                        {bartender.calificacion_eficiencia > 90 ? 'Excelente' :
-                         bartender.calificacion_eficiencia > 70 ? 'Bueno' : 'Mejorable'}
+                        {eficiencia >= 90 ? 'Top Bartender' : eficiencia >= 70 ? 'Profesional' : 'En formación'}
                       </span>
                     </div>
                     <div className="flex gap-1">
@@ -220,13 +360,24 @@ export default function BartendersPage() {
                             <XCircle className="h-3 w-3 mr-1" />
                             Desactivar
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => {
+                              setSelectedBartender(bartender)
+                              setIsDeleteDialogOpen(true)
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         </>
                       ) : (
                         <Button 
                           size="sm" 
                           variant="outline"
                           className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                          onClick={() => handleAutorizar(usuario.id)}
+                          onClick={() => handleActivar(usuario.id)}
                           disabled={actionLoading === usuario.id}
                         >
                           {actionLoading === usuario.id ? (
@@ -254,6 +405,24 @@ export default function BartendersPage() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará al bartender <strong>{selectedBartender?.nombre_completo}</strong>.
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

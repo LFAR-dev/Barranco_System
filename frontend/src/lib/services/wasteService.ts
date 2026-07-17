@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
 
 export const wasteService = {
-  async create(data: any) {
+  async create(data: any): Promise<boolean> {
     const supabase = createClient()
     const { error } = await supabase
       .from('mermas')
@@ -18,7 +18,7 @@ export const wasteService = {
     return true
   },
 
-  async getByBartender(bartenderId: string) {
+  async getByBartender(bartenderId: string): Promise<any[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('mermas')

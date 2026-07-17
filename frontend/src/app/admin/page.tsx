@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useAuth } from '@/hooks/useAuth'
 import {
   TrendingUp,
   TrendingDown,
@@ -18,7 +19,9 @@ import {
   ShoppingCart,
   UserCog,
   UserCheck,
-  Table
+  Table,
+  UserPlus,
+  Settings
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -37,7 +40,7 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { useAuth } from '@/hooks/useAuth'
+import { createClient } from '@/lib/supabase/client'
 
 const salesData = [
   { time: '09:00', ventas: 2000 },
@@ -99,13 +102,49 @@ const alerts = [
 export default function AdminDashboardPage() {
   const { logout } = useAuth()
   const [greeting, setGreeting] = useState('')
+  const [stats, setStats] = useState({
+    bartenders: 0,
+    meseros: 0,
+    productos: 0,
+    ventas: 0
+  })
 
   useEffect(() => {
     const hour = new Date().getHours()
     if (hour < 12) setGreeting('Buenos días')
     else if (hour < 18) setGreeting('Buenas tardes')
     else setGreeting('Buenas noches')
+
+    fetchStats()
   }, [])
+
+  const fetchStats = async () => {
+    const supabase = createClient()
+    try {
+      const { count: bartenders } = await supabase
+        .from('bartenders')
+        .select('*', { count: 'exact', head: true })
+        .eq('activo', true)
+
+      const { count: meseros } = await supabase
+        .from('meseros')
+        .select('*', { count: 'exact', head: true })
+        .eq('activo', true)
+
+      const { count: productos } = await supabase
+        .from('productos')
+        .select('*', { count: 'exact', head: true })
+        .eq('activo', true)
+
+      const { count: ventas } = await supabase
+        .from('ventas')
+        .select('*', { count: 'exact', head: true })
+
+      setStats({ bartenders: bartenders || 0, meseros: meseros || 0, productos: productos || 0, ventas: ventas || 0 })
+    } catch (error) {
+      console.error('Error fetching stats:', error)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -152,7 +191,7 @@ export default function AdminDashboardPage() {
           <p className="text-gray-500">Resumen general del sistema</p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 mb-6">
           <Link href="/admin/inventory">
             <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-100 bg-blue-50/50">
               <CardContent className="p-3 flex items-center gap-2">
@@ -161,6 +200,7 @@ export default function AdminDashboardPage() {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-900">Inventario</p>
+                  <p className="text-xs text-gray-500">{stats.productos}</p>
                 </div>
               </CardContent>
             </Card>
@@ -185,30 +225,33 @@ export default function AdminDashboardPage() {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-900">Ventas</p>
+                  <p className="text-xs text-gray-500">{stats.ventas}</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/admin/bartenders">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer border-orange-100 bg-orange-50/50">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-100 bg-green-50/50">
               <CardContent className="p-3 flex items-center gap-2">
-                <div className="p-1.5 bg-orange-100 rounded-lg">
-                  <UserCog className="h-4 w-4 text-orange-600" />
+                <div className="p-1.5 bg-green-100 rounded-lg">
+                  <UserCog className="h-4 w-4 text-green-600" />
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-900">Bartenders</p>
+                  <p className="text-xs text-gray-500">{stats.bartenders}</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/admin/meseros">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer border-teal-100 bg-teal-50/50">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-orange-100 bg-orange-50/50">
               <CardContent className="p-3 flex items-center gap-2">
-                <div className="p-1.5 bg-teal-100 rounded-lg">
-                  <UserCheck className="h-4 w-4 text-teal-600" />
+                <div className="p-1.5 bg-orange-100 rounded-lg">
+                  <UserCheck className="h-4 w-4 text-orange-600" />
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-900">Meseros</p>
+                  <p className="text-xs text-gray-500">{stats.meseros}</p>
                 </div>
               </CardContent>
             </Card>
@@ -270,12 +313,12 @@ export default function AdminDashboardPage() {
             <CardContent className="pt-6">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">BARTENDERS ACTIVOS</p>
-                  <p className="text-2xl font-bold text-gray-900">12</p>
+                  <p className="text-sm text-gray-500">EQUIPO ACTIVO</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.bartenders + stats.meseros}</p>
                   <div className="flex items-center mt-1">
                     <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                    <span className="text-xs text-green-500 font-medium">3</span>
-                    <span className="text-xs text-gray-400 ml-1">nuevos</span>
+                    <span className="text-xs text-green-500 font-medium">+</span>
+                    <span className="text-xs text-gray-400 ml-1">activos</span>
                   </div>
                 </div>
                 <div className="p-3 bg-purple-100 rounded-xl">

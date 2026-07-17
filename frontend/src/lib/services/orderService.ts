@@ -21,7 +21,7 @@ export interface Order {
 }
 
 export const orderService = {
-  async getOrdersByEstado(estado?: string) {
+  async getOrdersByEstado(estado?: string): Promise<Order[]> {
     const supabase = createClient()
     let query = supabase
       .from('pedidos')
@@ -37,7 +37,7 @@ export const orderService = {
     return data
   },
 
-  async createOrder(order: any) {
+  async createOrder(order: any): Promise<Order> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('pedidos')
@@ -54,7 +54,7 @@ export const orderService = {
     return data as Order
   },
 
-  async updateOrder(id: string, updates: any) {
+  async updateOrder(id: string, updates: any): Promise<Order> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('pedidos')
@@ -66,19 +66,19 @@ export const orderService = {
     return data as Order
   },
 
-  async assignBartender(orderId: string, bartenderId: string) {
+  async assignBartender(orderId: string, bartenderId: string): Promise<Order> {
     return this.updateOrder(orderId, { bartender_id: bartenderId, estado: 'preparando' })
   },
 
-  async markReady(orderId: string) {
+  async markReady(orderId: string): Promise<Order> {
     return this.updateOrder(orderId, { estado: 'listo' })
   },
 
-  async markServed(orderId: string) {
+  async markServed(orderId: string): Promise<Order> {
     return this.updateOrder(orderId, { estado: 'servido' })
   },
 
-  async cancelOrder(orderId: string) {
+  async cancelOrder(orderId: string): Promise<Order> {
     return this.updateOrder(orderId, { estado: 'cancelado' })
   }
 }

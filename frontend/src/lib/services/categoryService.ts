@@ -10,7 +10,7 @@ export interface Category {
 }
 
 export const categoryService = {
-  async getAll() {
+  async getAll(): Promise<Category[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('categorias')
@@ -21,41 +21,41 @@ export const categoryService = {
     return data as Category[]
   },
 
-  async getById(id: string) {
+  async getById(id: string): Promise<Category | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('categorias')
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
     if (error) throw error
-    return data as Category
+    return data as Category | null
   },
 
-  async create(category: Omit<Category, 'id'>) {
+  async create(category: Omit<Category, 'id'>): Promise<Category> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('categorias')
       .insert([category])
       .select()
-      .single()
+      .maybeSingle()
     if (error) throw error
     return data as Category
   },
 
-  async update(id: string, category: Partial<Category>) {
+  async update(id: string, category: Partial<Category>): Promise<Category> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('categorias')
       .update(category)
       .eq('id', id)
       .select()
-      .single()
+      .maybeSingle()
     if (error) throw error
     return data as Category
   },
 
-  async delete(id: string) {
+  async delete(id: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase
       .from('categorias')

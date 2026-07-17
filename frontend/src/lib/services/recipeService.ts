@@ -13,6 +13,7 @@ export interface Recipe {
   activa: boolean
   imagen_url?: string
   ingredientes?: RecipeIngredient[]
+  descripcion?: string
 }
 
 export interface RecipeIngredient {
@@ -24,7 +25,7 @@ export interface RecipeIngredient {
 }
 
 export const recipeService = {
-  async getAll() {
+  async getAll(): Promise<Recipe[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('recetas')
@@ -35,7 +36,7 @@ export const recipeService = {
     return data as Recipe[]
   },
 
-  async getById(id: string) {
+  async getById(id: string): Promise<Recipe | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('recetas')
@@ -51,17 +52,20 @@ export const recipeService = {
       .eq('id', id)
       .maybeSingle()
     if (error) throw error
-    const ingredientes = data?.detalles_receta?.map((d: any) => ({
+    if (!data) return null
+    
+    const ingredientes = data.detalles_receta?.map((d: any) => ({
       id: d.id,
       producto_id: d.productos.id,
       producto_nombre: d.productos.nombre,
       cantidad: d.cantidad,
       unidad: d.unidad
     })) || []
+    
     return { ...data, ingredientes } as Recipe
   },
 
-  async create(recipe: any) {
+  async create(recipe: any): Promise<Recipe> {
     const supabase = createClient()
     const { data: recipeData, error: recipeError } = await supabase
       .from('recetas')
@@ -69,6 +73,7 @@ export const recipeService = {
         nombre: recipe.nombre,
         nombre_corto: recipe.nombre_corto,
         categoria: recipe.categoria,
+        descripcion: recipe.descripcion,
         metodo_preparacion: recipe.metodo_preparacion,
         garnish: recipe.garnish,
         precio_venta: recipe.precio_venta,
@@ -94,7 +99,7 @@ export const recipeService = {
     return recipeData as Recipe
   },
 
-  async update(id: string, recipe: any) {
+  async update(id: string, recipe: any): Promise<Recipe> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('recetas')
@@ -102,6 +107,7 @@ export const recipeService = {
         nombre: recipe.nombre,
         nombre_corto: recipe.nombre_corto,
         categoria: recipe.categoria,
+        descripcion: recipe.descripcion,
         metodo_preparacion: recipe.metodo_preparacion,
         garnish: recipe.garnish,
         precio_venta: recipe.precio_venta,
@@ -130,7 +136,7 @@ export const recipeService = {
     return data as Recipe
   },
 
-  async delete(id: string) {
+  async delete(id: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase
       .from('recetas')
@@ -139,7 +145,7 @@ export const recipeService = {
     if (error) throw error
   },
 
-  async uploadImage(file: File, path: string) {
+  async uploadImage(file: File, path: string): Promise<string> {
     const supabase = createClient()
     const { error } = await supabase.storage
       .from('barranco-images')

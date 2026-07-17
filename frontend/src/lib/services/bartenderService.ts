@@ -19,7 +19,7 @@ export interface Bartender {
 }
 
 export const bartenderService = {
-  async getAll() {
+  async getAll(): Promise<Bartender[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('bartenders')
@@ -42,13 +42,14 @@ export const bartenderService = {
     })) as Bartender[]
   },
 
-  async getById(id: string) {
+  async getById(id: string): Promise<Bartender | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('bartenders')
       .select(`
         *,
         usuarios (
+          id,
           email,
           phone_number,
           avatar_url
@@ -57,21 +58,23 @@ export const bartenderService = {
       .eq('id', id)
       .maybeSingle()
     if (error) throw error
+    if (!data) return null
     return {
       ...data,
-      email: data?.usuarios?.email,
-      phone_number: data?.usuarios?.phone_number,
-      avatar_url: data?.usuarios?.avatar_url
+      email: data.usuarios?.email,
+      phone_number: data.usuarios?.phone_number,
+      avatar_url: data.usuarios?.avatar_url
     } as Bartender
   },
 
-  async getByUsuarioId(usuarioId: string) {
+  async getByUsuarioId(usuarioId: string): Promise<Bartender | null> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('bartenders')
       .select(`
         *,
         usuarios (
+          id,
           email,
           phone_number,
           avatar_url
@@ -80,15 +83,16 @@ export const bartenderService = {
       .eq('usuario_id', usuarioId)
       .maybeSingle()
     if (error) throw error
+    if (!data) return null
     return {
       ...data,
-      email: data?.usuarios?.email,
-      phone_number: data?.usuarios?.phone_number,
-      avatar_url: data?.usuarios?.avatar_url
+      email: data.usuarios?.email,
+      phone_number: data.usuarios?.phone_number,
+      avatar_url: data.usuarios?.avatar_url
     } as Bartender
   },
 
-  async create(bartender: any) {
+  async create(bartender: any): Promise<Bartender> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('bartenders')
@@ -99,7 +103,7 @@ export const bartenderService = {
     return data as Bartender
   },
 
-  async update(id: string, bartender: any) {
+  async update(id: string, bartender: any): Promise<Bartender> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('bartenders')
@@ -111,7 +115,7 @@ export const bartenderService = {
     return data as Bartender
   },
 
-  async delete(id: string) {
+  async delete(id: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase
       .from('bartenders')
@@ -120,7 +124,7 @@ export const bartenderService = {
     if (error) throw error
   },
 
-  async uploadFoto(file: File, bartenderId: string) {
+  async uploadFoto(file: File, bartenderId: string): Promise<string> {
     const supabase = createClient()
     const path = `bartenders/${bartenderId}/${Date.now()}_${file.name}`
     const { error } = await supabase.storage
