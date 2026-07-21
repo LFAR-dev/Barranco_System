@@ -34,6 +34,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { userService } from '@/lib/services/userService'
 import { createClient } from '@/lib/supabase/client'
 import MeseroForm from '@/components/admin/MeseroForm'
+import { UserNIPCard } from '@/components/admin/UserNIPCard'
 
 export default function MeserosPage() {
   const { user } = useAuth()
@@ -61,21 +62,6 @@ export default function MeserosPage() {
       console.error('Error fetching meseros:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleAutorizar = async (usuarioId: string) => {
-    if (!user) return
-    setActionLoading(usuarioId)
-    try {
-      const codigo = await userService.autorizarUsuario(usuarioId, user.id)
-      alert(`✅ Código generado: ${codigo}\nCompártelo con el mesero para que inicie sesión.`)
-      await fetchMeseros()
-    } catch (error) {
-      alert('Error al autorizar el usuario')
-      console.error(error)
-    } finally {
-      setActionLoading(null)
     }
   }
 
@@ -122,8 +108,7 @@ export default function MeserosPage() {
   const handleUploadImage = async (meseroId: string, file: File) => {
     setUploadingImage(meseroId)
     try {
-      const url = await userService.uploadMeseroFoto(file, meseroId)
-      await userService.updateMesero(meseroId, { foto_url: url })
+      const url = await userService.uploadMeseroFoto(file, meseroId, selectedMesero?.usuario_id || '')
       await fetchMeseros()
     } catch (error) {
       alert('Error al subir la imagen')
@@ -224,11 +209,6 @@ export default function MeserosPage() {
           {filteredMeseros.map((mesero, index) => {
             const usuario = mesero.usuarios || {}
             const isActivo = usuario.activo
-            const tieneCodigo = usuario.codigo_acceso
-            const codigoExpiracion = usuario.codigo_expiracion
-              ? new Date(usuario.codigo_expiracion)
-              : null
-            const isExpirado = codigoExpiracion && codigoExpiracion < new Date()
             const calificacion = mesero.calificacion || 0
 
             return (
@@ -282,16 +262,16 @@ export default function MeserosPage() {
                       </div>
                       <p className="text-sm text-gray-500">Código: {mesero.codigo || 'N/A'}</p>
                       <p className="text-xs text-gray-400 truncate">{usuario.email}</p>
-                      {tieneCodigo && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Key className="h-3 w-3 text-green-600" />
-                          <span className="text-xs text-green-600 font-mono">{tieneCodigo}</span>
-                          <span className="text-xs text-gray-400">
-                            {isExpirado ? '(Expirado)' : `Expira: ${codigoExpiracion?.toLocaleTimeString()}`}
-                          </span>
-                        </div>
-                      )}
                     </div>
+                  </div>
+
+                  {/* Componente NIP */}
+                  <div className="mt-3">
+                    <UserNIPCard
+                      usuarioId={usuario.id}
+                      usuarioNombre={mesero.nombre_completo}
+                      onNIPChange={fetchMeseros}
+                    />
                   </div>
 
                   <div className="mt-3 grid grid-cols-3 gap-2">
@@ -331,22 +311,6 @@ export default function MeserosPage() {
                     <div className="flex gap-1">
                       {isActivo ? (
                         <>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="text-green-600 border-green-200 hover:bg-green-50"
-                            onClick={() => handleAutorizar(usuario.id)}
-                            disabled={actionLoading === usuario.id}
-                          >
-                            {actionLoading === usuario.id ? (
-                              <div className="animate-spin h-3 w-3 border-2 border-green-600 border-t-transparent rounded-full" />
-                            ) : (
-                              <>
-                                <Key className="h-3 w-3 mr-1" />
-                                Autorizar
-                              </>
-                            )}
-                          </Button>
                           <Button 
                             size="sm" 
                             variant="outline"

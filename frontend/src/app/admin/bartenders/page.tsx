@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { 
   Search, Users, ArrowLeft, RefreshCw, Star, User, 
-  CheckCircle, XCircle, Key, Clock, Eye, Plus,
+  CheckCircle, XCircle, Key, Clock, Plus,
   Edit, Trash2, Camera, DollarSign, TrendingUp, Award
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -34,6 +34,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { userService } from '@/lib/services/userService'
 import { createClient } from '@/lib/supabase/client'
 import BartenderForm from '@/components/admin/BartenderForm'
+import { UserNIPCard } from '@/components/admin/UserNIPCard'
 
 export default function BartendersPage() {
   const { user } = useAuth()
@@ -45,7 +46,6 @@ export default function BartendersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedBartender, setSelectedBartender] = useState<any>(null)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -62,21 +62,6 @@ export default function BartendersPage() {
       console.error('Error fetching bartenders:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleAutorizar = async (usuarioId: string) => {
-    if (!user) return
-    setActionLoading(usuarioId)
-    try {
-      const codigo = await userService.autorizarUsuario(usuarioId, user.id)
-      alert(`✅ Código generado: ${codigo}\nCompártelo con el bartender para que inicie sesión.`)
-      await fetchBartenders()
-    } catch (error) {
-      alert('Error al autorizar el usuario')
-      console.error(error)
-    } finally {
-      setActionLoading(null)
     }
   }
 
@@ -123,8 +108,7 @@ export default function BartendersPage() {
   const handleUploadImage = async (bartenderId: string, file: File) => {
     setUploadingImage(bartenderId)
     try {
-      const url = await userService.uploadBartenderFoto(file, bartenderId)
-      await userService.updateBartender(bartenderId, { foto_url: url })
+      const url = await userService.uploadBartenderFoto(file, bartenderId, selectedBartender?.usuario_id || '')
       await fetchBartenders()
     } catch (error) {
       alert('Error al subir la imagen')
@@ -224,11 +208,6 @@ export default function BartendersPage() {
           {filteredBartenders.map((bartender, index) => {
             const usuario = bartender.usuarios || {}
             const isActivo = usuario.activo
-            const tieneCodigo = usuario.codigo_acceso
-            const codigoExpiracion = usuario.codigo_expiracion
-              ? new Date(usuario.codigo_expiracion)
-              : null
-            const isExpirado = codigoExpiracion && codigoExpiracion < new Date()
             const eficiencia = bartender.calificacion_eficiencia || 0
 
             return (
@@ -282,16 +261,16 @@ export default function BartendersPage() {
                       </div>
                       <p className="text-sm text-gray-500">Código: {bartender.codigo || 'N/A'}</p>
                       <p className="text-xs text-gray-400 truncate">{usuario.email}</p>
-                      {tieneCodigo && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Key className="h-3 w-3 text-green-600" />
-                          <span className="text-xs text-green-600 font-mono">{tieneCodigo}</span>
-                          <span className="text-xs text-gray-400">
-                            {isExpirado ? '(Expirado)' : `Expira: ${codigoExpiracion?.toLocaleTimeString()}`}
-                          </span>
-                        </div>
-                      )}
                     </div>
+                  </div>
+
+                  {/* Componente NIP */}
+                  <div className="mt-3">
+                    <UserNIPCard
+                      usuarioId={usuario.id}
+                      usuarioNombre={bartender.nombre_completo}
+                      onNIPChange={fetchBartenders}
+                    />
                   </div>
 
                   <div className="mt-3 grid grid-cols-3 gap-2">
@@ -334,22 +313,6 @@ export default function BartendersPage() {
                     <div className="flex gap-1">
                       {isActivo ? (
                         <>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="text-green-600 border-green-200 hover:bg-green-50"
-                            onClick={() => handleAutorizar(usuario.id)}
-                            disabled={actionLoading === usuario.id}
-                          >
-                            {actionLoading === usuario.id ? (
-                              <div className="animate-spin h-3 w-3 border-2 border-green-600 border-t-transparent rounded-full" />
-                            ) : (
-                              <>
-                                <Key className="h-3 w-3 mr-1" />
-                                Autorizar
-                              </>
-                            )}
-                          </Button>
                           <Button 
                             size="sm" 
                             variant="outline"

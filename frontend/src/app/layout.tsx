@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-// TypeScript may complain about side-effect CSS imports in some setups.
-// @ts-ignore: Allow importing global CSS without type declarations
 import './globals.css'
-import { cn } from "@/lib/utils";
+import { CleanAttributesProvider } from '@/components/providers/CleanAttributesProvider'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
+// Importar para silenciar errores de extensiones de Chrome
+import '@/lib/utils/silenceErrors'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Barranco Intelligence System',
@@ -18,8 +19,12 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="es" className={cn("font-sans", inter.variable)}>
-      <body className={inter.className}>{children}</body>
+    <html lang="es">
+      <body className={inter.className}>
+        <CleanAttributesProvider>
+          {children}
+        </CleanAttributesProvider>
+      </body>
     </html>
   )
 }

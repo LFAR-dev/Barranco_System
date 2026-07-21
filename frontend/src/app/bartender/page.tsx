@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { useGreeting } from '@/hooks/useGreeting'
+import { userService } from '@/lib/services/userService'
 import { createClient } from '@/lib/supabase/client'
 import { recipeService } from '@/lib/services/recipeService'
 import {
@@ -11,7 +13,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -19,9 +21,11 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { wasteService } from '@/lib/services/wasteService'
+import { AvatarWithViewer } from '@/components/ui/AvatarWithViewer'
 
 export default function BartenderDashboardPage() {
   const { user, logout } = useAuth()
+  const { greeting, timeIcon } = useGreeting()
   const supabase = createClient()
   const [recipes, setRecipes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,6 +33,7 @@ export default function BartenderDashboardPage() {
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null)
   const [bartenderId, setBartenderId] = useState<string | null>(null)
   const [products, setProducts] = useState<any[]>([])
+  const [userData, setUserData] = useState<any>(null)
   const [shiftStats, setShiftStats] = useState({ ventas: 0, mermas: 0, bebidas: 0, eficiencia: 0 })
   const [showWasteDialog, setShowWasteDialog] = useState(false)
   const [wasteData, setWasteData] = useState({ producto_id: '', cantidad: 0, motivo: 'caida', descripcion: '', tipo: 'no_esperada' })
@@ -42,6 +47,10 @@ export default function BartenderDashboardPage() {
   const loadData = async () => {
     setLoading(true)
     try {
+      // Cargar datos del usuario
+      const userData = await userService.getById(user?.id || '')
+      setUserData(userData)
+
       const { data: bartenderData } = await supabase
         .from('bartenders')
         .select('id')
@@ -155,6 +164,16 @@ export default function BartenderDashboardPage() {
     recipe.nombre_corto?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
+  const getFirstName = () => {
+    if (!userData) return 'Bartender'
+    return userData.nombre || 'Bartender'
+  }
+
+  const getInitials = () => {
+    if (!userData) return 'B'
+    return `${userData.nombre?.charAt(0) || ''}${userData.apellido?.charAt(0) || ''}`.toUpperCase()
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -188,15 +207,12 @@ export default function BartenderDashboardPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <Avatar className="cursor-pointer">
-                <AvatarFallback className="bg-green-600 text-white">
-                  {user?.email?.charAt(0).toUpperCase() || 'B'}
-                </AvatarFallback>
-              </Avatar>
-              <Button variant="ghost" size="sm" onClick={logout} className="text-gray-600 hover:text-gray-900">
-                <LogOut className="h-4 w-4 mr-1" />
-                Salir
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={logout} className="text-gray-600 hover:text-gray-900">
+                  <LogOut className="h-4 w-4 mr-1" />
+                  Salir
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -205,11 +221,21 @@ export default function BartenderDashboardPage() {
       <main className="px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-3">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3 mb-6">
+              <AvatarWithViewer
+                src={null}
+                fallback={getInitials()}
+                size="lg"
+              />
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">¡Hola, Bartender!</h1>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {timeIcon} {greeting}, {getFirstName()}
+                </h1>
                 <p className="text-gray-500">Prepara bebidas y gestiona tu turno</p>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between mb-4">
               <div className="flex gap-2">
                 <Dialog open={showWasteDialog} onOpenChange={setShowWasteDialog}>
                   <DialogTrigger asChild>
@@ -387,32 +413,35 @@ export default function BartenderDashboardPage() {
           <div>
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">RESUMEN DEL TURNO</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-green-600" />
+                  RESUMEN DEL TURNO
+                </CardTitle>
                 <CardDescription>Tu rendimiento hoy</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-2">
                     <Coffee className="h-4 w-4 text-gray-400" />
                     <span className="text-sm text-gray-600">Bebidas</span>
                   </div>
                   <span className="text-lg font-bold">{shiftStats.bebidas}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-2">
                     <DollarSign className="h-4 w-4 text-gray-400" />
                     <span className="text-sm text-gray-600">Ventas</span>
                   </div>
                   <span className="text-lg font-bold text-green-600">${shiftStats.ventas.toFixed(2)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4 text-gray-400" />
                     <span className="text-sm text-gray-600">Merma</span>
                   </div>
                   <span className="text-lg font-bold text-red-500">${shiftStats.mermas.toFixed(2)}</span>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-gray-400" />
                     <span className="text-sm text-gray-600">Eficiencia</span>

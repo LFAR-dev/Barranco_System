@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { useGreeting } from '@/hooks/useGreeting'
+import { userService } from '@/lib/services/userService'
 import { createClient } from '@/lib/supabase/client'
 import { meseroService } from '@/lib/services/meseroService'
 import { recipeService } from '@/lib/services/recipeService'
@@ -9,7 +11,7 @@ import { productService } from '@/lib/services/productService'
 import {
   Search, Bell, LogOut, Plus, Minus, Trash2, Send, 
   Coffee, Wine, Beer, GlassWater, Utensils, 
-  AlertCircle, CheckCircle, Clock, Menu, X,
+  AlertCircle, CheckCircle, Clock, Menu,
   Table, User, DollarSign, ShoppingCart
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,10 +25,11 @@ import {
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { AvatarWithViewer } from '@/components/ui/AvatarWithViewer'
 
 export default function MeseroDashboard() {
   const { user, logout } = useAuth()
+  const { greeting, timeIcon } = useGreeting()
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [mesas, setMesas] = useState<any[]>([])
@@ -34,6 +37,7 @@ export default function MeseroDashboard() {
   const [productos, setProductos] = useState<any[]>([])
   const [recetas, setRecetas] = useState<any[]>([])
   const [notificaciones, setNotificaciones] = useState<any[]>([])
+  const [userData, setUserData] = useState<any>(null)
   const [mesaSeleccionada, setMesaSeleccionada] = useState<any>(null)
   const [pedidoActivo, setPedidoActivo] = useState<any>(null)
   const [carrito, setCarrito] = useState<any[]>([])
@@ -43,16 +47,16 @@ export default function MeseroDashboard() {
   useEffect(() => {
     if (user) {
       loadData()
-      const interval = setInterval(() => {
-        checkNotifications()
-      }, 30 * 60 * 1000)
-      return () => clearInterval(interval)
     }
   }, [user])
 
   const loadData = async () => {
     setLoading(true)
     try {
+      // Cargar datos del usuario
+      const userData = await userService.getById(user?.id || '')
+      setUserData(userData)
+
       const [mesasData, pedidosData, productosData, recetasData] = await Promise.all([
         meseroService.getMesas(),
         meseroService.getPedidosByMesero(user?.id || ''),
@@ -80,25 +84,6 @@ export default function MeseroDashboard() {
     } catch (error) {
       console.error('Error loading notifications:', error)
     }
-  }
-
-  const checkNotifications = async () => {
-    const mesasActivas = pedidos.filter(p => p.estado === 'activo')
-    for (const pedido of mesasActivas) {
-      const lastActivity = new Date(pedido.ultima_actividad)
-      const now = new Date()
-      const diffMinutes = (now.getTime() - lastActivity.getTime()) / 1000 / 60
-      
-      if (diffMinutes >= 30) {
-        await meseroService.crearNotificacion(
-          user?.id || '',
-          pedido.mesa_id,
-          'recordatorio',
-          `⏰ La mesa ${pedido.mesas?.numero} tiene ${diffMinutes} minutos sin actividad. ¿Deseas ofrecer algo más?`
-        )
-      }
-    }
-    await loadNotifications()
   }
 
   const handleSeleccionarMesa = async (mesa: any) => {
@@ -203,6 +188,16 @@ export default function MeseroDashboard() {
 
   const totalPedidosActivos = pedidos.filter(p => p.estado === 'activo').length
 
+  const getFirstName = () => {
+    if (!userData) return 'Mesero'
+    return userData.nombre || 'Mesero'
+  }
+
+  const getInitials = () => {
+    if (!userData) return 'M'
+    return `${userData.nombre?.charAt(0) || ''}${userData.apellido?.charAt(0) || ''}`.toUpperCase()
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -227,11 +222,6 @@ export default function MeseroDashboard() {
                   <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
                 )}
               </Button>
-              <Avatar className="cursor-pointer">
-                <AvatarFallback className="bg-orange-600 text-white">
-                  {user?.email?.charAt(0).toUpperCase() || 'M'}
-                </AvatarFallback>
-              </Avatar>
               <Button variant="ghost" size="sm" onClick={logout} className="text-gray-600 hover:text-gray-900">
                 <LogOut className="h-4 w-4 mr-1" />
                 Salir
@@ -242,46 +232,19 @@ export default function MeseroDashboard() {
       </header>
 
       <main className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3 mb-6">
+          <AvatarWithViewer
+            src={null}
+            fallback={getInitials()}
+            size="lg"
+          />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">¡Hola, Mesero!</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {timeIcon} {greeting}, {getFirstName()}
+            </h1>
             <p className="text-gray-500">
               {totalPedidosActivos} mesas activas • {notificaciones.length} notificaciones
             </p>
-          </div>
-          <div className="flex gap-2">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="border-orange-500 text-orange-600 hover:bg-orange-50">
-                  <Bell className="h-4 w-4 mr-2" />
-                  Notificaciones
-                  {notificaciones.length > 0 && (
-                    <Badge className="ml-2 bg-red-500 text-white">{notificaciones.length}</Badge>
-                  )}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Notificaciones</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {notificaciones.length === 0 ? (
-                    <p className="text-gray-500 text-center py-4">No hay notificaciones</p>
-                  ) : (
-                    notificaciones.map(notif => (
-                      <Card key={notif.id} className="border-l-4 border-l-orange-400">
-                        <CardContent className="p-3">
-                          <p className="text-sm">{notif.mensaje}</p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {new Date(notif.fecha).toLocaleTimeString()}
-                          </p>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
           </div>
         </div>
 

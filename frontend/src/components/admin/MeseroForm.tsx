@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -8,17 +8,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { UserPlus, Mail, Lock, User, Calendar } from 'lucide-react'
+import { UserPlus, Mail, User, Calendar, Phone, Camera, X } from 'lucide-react'
 import { userService } from '@/lib/services/userService'
 
 const meseroSchema = z.object({
   email: z.string().email('Email inválido'),
-  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
   nombre: z.string().min(2, 'El nombre es requerido'),
   apellido: z.string().min(2, 'El apellido es requerido'),
-  pin: z.string().min(4, 'El PIN debe tener al menos 4 dígitos').max(6, 'El PIN debe tener máximo 6 dígitos'),
   telefono: z.string().optional(),
-  fecha_contratacion: z.string().optional(),
 })
 
 type MeseroFormData = z.infer<typeof meseroSchema>
@@ -32,13 +29,25 @@ export default function MeseroForm({ onSuccess, onCancel }: MeseroFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { register, handleSubmit, formState: { errors } } = useForm<MeseroFormData>({
     resolver: zodResolver(meseroSchema),
-    defaultValues: {
-      pin: '4321',
-    }
   })
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setAvatarFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
   const onSubmit = async (data: MeseroFormData) => {
     setLoading(true)
@@ -46,21 +55,21 @@ export default function MeseroForm({ onSuccess, onCancel }: MeseroFormProps) {
     setSuccess('')
 
     try {
-      await userService.createFullUser({
+      const result = await userService.createFullUser({
         email: data.email,
-        password: data.password,
         nombre: data.nombre,
         apellido: data.apellido,
         rol: 'mesero',
-        pin: data.pin,
         telefono: data.telefono,
-        fecha_contratacion: data.fecha_contratacion,
+        avatar_file: avatarFile || undefined
       })
 
-      setSuccess('✅ Mesero creado exitosamente')
+      const nipMsg = result.nip ? `\nNIP generado automáticamente: ${result.nip}` : ''
+      setSuccess(`✅ ${data.nombre} ${data.apellido} creado exitosamente\n📧 Email: ${data.email}\n📱 Teléfono: ${data.telefono || 'No proporcionado'}${nipMsg}\n\n⚠️ El usuario está INACTIVO. Debes autorizarlo con el botón "Nuevo NIP" para que pueda acceder.`)
+      
       setTimeout(() => {
         if (onSuccess) onSuccess()
-      }, 1500)
+      }, 3000)
 
     } catch (err: any) {
       setError(err.message || 'Error al crear el mesero')
@@ -79,10 +88,47 @@ export default function MeseroForm({ onSuccess, onCancel }: MeseroFormProps) {
             </div>
           )}
           {success && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-600 text-sm">
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-600 text-sm whitespace-pre-line max-h-60 overflow-y-auto">
               {success}
             </div>
           )}
+
+          {/* Avatar */}
+          <div className="space-y-2">
+            <Label>Foto de perfil</Label>
+            <div className="flex items-center gap-4">
+              <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-100">
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-400">
+                    <Camera className="h-8 w-8" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleAvatarChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  {avatarPreview ? 'Cambiar foto' : 'Subir foto'}
+                </Button>
+                {avatarPreview && (
+                  <Button type="button" variant="ghost" size="sm" className="ml-2 text-red-500" onClick={() => {
+                    setAvatarPreview(null)
+                    setAvatarFile(null)
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  }}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -104,44 +150,20 @@ export default function MeseroForm({ onSuccess, onCancel }: MeseroFormProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                <Input id="email" type="email" placeholder="mesero@barranco.com" className="pl-9" {...register('email')} />
-              </div>
-              {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+          <div className="space-y-2">
+            <Label htmlFor="email">Email *</Label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Input id="email" type="email" placeholder="mesero@barranco.com" className="pl-9" {...register('email')} />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Contraseña *</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                <Input id="password" type="password" placeholder="••••••••" className="pl-9" {...register('password')} />
-              </div>
-              {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="pin">PIN de acceso *</Label>
-              <Input id="pin" type="text" placeholder="4321" maxLength={6} {...register('pin')} />
-              {errors.pin && <p className="text-xs text-red-500">{errors.pin.message}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="telefono">Teléfono</Label>
-              <Input id="telefono" placeholder="+52 123 456 7890" {...register('telefono')} />
-            </div>
+            {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="fecha_contratacion">Fecha de contratación</Label>
+            <Label htmlFor="telefono">Teléfono</Label>
             <div className="relative">
-              <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-              <Input id="fecha_contratacion" type="date" className="pl-9" {...register('fecha_contratacion')} />
+              <Phone className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Input id="telefono" placeholder="+52 123 456 7890" className="pl-9" {...register('telefono')} />
             </div>
           </div>
 
@@ -155,6 +177,16 @@ export default function MeseroForm({ onSuccess, onCancel }: MeseroFormProps) {
                 Cancelar
               </Button>
             )}
+          </div>
+
+          <div className="text-xs text-gray-400 bg-blue-50 p-3 rounded-lg border border-blue-100">
+            <p className="font-medium text-blue-700">📌 Creación automática:</p>
+            <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 mt-1">
+              <li>El PIN y NIP se generan automáticamente</li>
+              <li>El usuario se crea en estado <strong>INACTIVO</strong></li>
+              <li>El admin debe autorizarlo con el botón <strong>"Nuevo NIP"</strong></li>
+              <li>El NIP expira en 24 horas</li>
+            </ul>
           </div>
         </form>
       </CardContent>

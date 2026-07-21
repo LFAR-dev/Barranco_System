@@ -1,248 +1,251 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ImagePlus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Card, CardContent } from '@/components/ui/card'
+import { UserPlus, Mail, Lock, User, Briefcase, Calendar, Phone } from 'lucide-react'
 import { userService } from '@/lib/services/userService'
-import { createClient } from '@/lib/supabase/client'
 
 const userSchema = z.object({
-  nombre: z.string().min(1, 'El nombre es requerido'),
-  apellido: z.string().min(1, 'El apellido es requerido'),
   email: z.string().email('Email inválido'),
-  phone_number: z.string().optional(),
-  pin: z.string().min(6, 'El PIN debe tener al menos 6 caracteres'),
-  rol: z.string().min(1, 'El rol es requerido'),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  nombre: z.string().min(2, 'El nombre es requerido'),
+  apellido: z.string().min(2, 'El apellido es requerido'),
+  rol: z.enum(['admin', 'bartender', 'mesero']),
+  pin: z.string().min(4, 'El PIN debe tener al menos 4 dígitos').max(6, 'El PIN debe tener máximo 6 dígitos'),
+  telefono: z.string().optional(),
+  fecha_contratacion: z.string().optional(),
 })
 
 type UserFormData = z.infer<typeof userSchema>
 
 interface UserFormProps {
-  user?: any
-  rol?: 'bartender' | 'mesero'
-  onSuccess: () => void
-  onCancel: () => void
+  onSuccess?: () => void
+  onCancel?: () => void
+  defaultValues?: Partial<UserFormData>
+  isEdit?: boolean
+  userId?: string
 }
 
-export default function UserForm({ user, rol = 'bartender', onSuccess, onCancel }: UserFormProps) {
+export default function UserForm({ onSuccess, onCancel, defaultValues, isEdit = false, userId }: UserFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [avatarPreview, setAvatarPreview] = useState<string>(user?.avatar_url || '')
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const isEditing = !!user
+  const [success, setSuccess] = useState('')
+  const [userData, setUserData] = useState<any>(null)
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<UserFormData>({
+  const { register, handleSubmit, formState: { errors }, setValue, watch, reset } = useForm<UserFormData>({
     resolver: zodResolver(userSchema),
-    defaultValues: {
-      nombre: user?.nombre || user?.usuarios?.nombre || '',
-      apellido: user?.apellido || user?.usuarios?.apellido || '',
-      email: user?.email || user?.usuarios?.email || '',
-      phone_number: user?.phone_number || user?.usuarios?.phone_number || '',
-      pin: user?.pin || '123456',
-      rol: user?.rol || rol,
+    defaultValues: defaultValues || {
+      rol: 'bartender',
+      pin: '1234',
     }
   })
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setAvatarFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
+  const rol = watch('rol')
 
-  const uploadImage = async (file: File, userId: string): Promise<string | null> => {
+  useEffect(() => {
+    if (isEdit && userId) {
+      loadUserData()
+    }
+  }, [isEdit, userId])
+
+  const loadUserData = async () => {
     try {
-      const supabase = createClient()
-      const path = `avatars/${userId}/${Date.now()}_${file.name}`
-      const { error: uploadError } = await supabase.storage
-        .from('barranco-images')
-        .upload(path, file, {
-          cacheControl: '3600',
-          upsert: true
+      const data = await userService.getById(userId!)
+      if (data) {
+        reset({
+          email: data.email,
+          nombre: data.nombre,
+          apellido: data.apellido,
+          rol: data.rol as any,
+          pin: data.pin,
+          telefono: data.phone_number || '',
         })
-      if (uploadError) throw uploadError
-      const { data: urlData } = supabase.storage
-        .from('barranco-images')
-        .getPublicUrl(path)
-      return urlData.publicUrl
+        setUserData(data)
+      }
     } catch (error) {
-      console.error('Error uploading image:', error)
-      return null
+      console.error('Error loading user:', error)
     }
   }
 
   const onSubmit = async (data: UserFormData) => {
     setLoading(true)
     setError('')
+    setSuccess('')
+
     try {
-      // Obtener el ID del usuario (para edición)
-      const userId = isEditing ? (user.id || user.usuario_id) : null
-      
-      // Si es edición, verificar que el usuario existe
-      if (isEditing && userId) {
-        const existing = await userService.getById(userId)
-        if (!existing) {
-          throw new Error('El usuario no existe en la base de datos')
-        }
-        
-        // Actualizar
-        const updateData = { ...data }
-        if (avatarFile) {
-          const url = await uploadImage(avatarFile, userId)
-          if (url) updateData.avatar_url = url
-        }
-        
-        const result = await userService.update(userId, updateData)
-        if (result) {
-          alert('Usuario actualizado correctamente')
-          onSuccess()
-        }
+      if (isEdit && userId) {
+        // Actualizar usuario existente
+        await userService.updateUser(userId, {
+          nombre: data.nombre,
+          apellido: data.apellido,
+          pin: data.pin,
+          telefono: data.telefono,
+          phone_number: data.telefono,
+        })
+        setSuccess('✅ Usuario actualizado exitosamente')
       } else {
         // Crear nuevo usuario
-        const userData = { ...data }
-        const result = await userService.create(userData)
-        if (result) {
-          // Si hay imagen, subirla
-          if (avatarFile && result.id) {
-            const url = await uploadImage(avatarFile, result.id)
-            if (url) {
-              await userService.update(result.id, { avatar_url: url })
-            }
-          }
-          alert('Usuario creado correctamente')
-          onSuccess()
-        }
+        await userService.createFullUser({
+          email: data.email,
+          password: data.password,
+          nombre: data.nombre,
+          apellido: data.apellido,
+          rol: data.rol,
+          pin: data.pin,
+          telefono: data.telefono,
+          fecha_contratacion: data.fecha_contratacion,
+        })
+        setSuccess('✅ Usuario creado exitosamente')
       }
-    } catch (error: any) {
-      console.error('Error saving user:', error)
-      setError(error.message || 'Error al guardar el usuario')
+      
+      setTimeout(() => {
+        if (onSuccess) onSuccess()
+      }, 1500)
+
+    } catch (err: any) {
+      setError(err.message || 'Error al guardar el usuario')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* Avatar */}
-      <div className="space-y-2">
-        <Label>Foto de perfil</Label>
-        <div className="flex items-center gap-4">
-          <div className="w-24 h-24 border-2 border-dashed rounded-full flex items-center justify-center overflow-hidden bg-gray-50">
-            {avatarPreview ? (
-              <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
-            ) : (
-              <ImagePlus className="h-8 w-8 text-gray-400" />
+    <Card className="border-0 shadow-none">
+      <CardContent className="p-0">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-600 text-sm">
+              {success}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="nombre">Nombre *</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <Input id="nombre" placeholder="Juan" className="pl-9" {...register('nombre')} />
+              </div>
+              {errors.nombre && <p className="text-xs text-red-500">{errors.nombre.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="apellido">Apellido *</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <Input id="apellido" placeholder="Pérez" className="pl-9" {...register('apellido')} />
+              </div>
+              {errors.apellido && <p className="text-xs text-red-500">{errors.apellido.message}</p>}
+            </div>
+          </div>
+
+          {!isEdit && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <Input id="email" type="email" placeholder="usuario@barranco.com" className="pl-9" {...register('email')} />
+                </div>
+                {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Contraseña *</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <Input id="password" type="password" placeholder="••••••••" className="pl-9" {...register('password')} />
+                </div>
+                {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="rol">Rol *</Label>
+              <Select
+                onValueChange={(value) => setValue('rol', value as any)}
+                defaultValue={defaultValues?.rol || 'bartender'}
+                disabled={isEdit && userData?.rol === 'admin'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar rol" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">👑 Administrador</SelectItem>
+                  <SelectItem value="bartender">🍸 Bartender</SelectItem>
+                  <SelectItem value="mesero">🍽️ Mesero</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.rol && <p className="text-xs text-red-500">{errors.rol.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pin">PIN de acceso *</Label>
+              <div className="relative">
+                <Briefcase className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <Input id="pin" type="text" placeholder="1234" maxLength={6} className="pl-9" {...register('pin')} />
+              </div>
+              {errors.pin && <p className="text-xs text-red-500">{errors.pin.message}</p>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="telefono">Teléfono</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <Input id="telefono" placeholder="+52 123 456 7890" className="pl-9" {...register('telefono')} />
+              </div>
+            </div>
+
+            {!isEdit && (
+              <div className="space-y-2">
+                <Label htmlFor="fecha_contratacion">Fecha de contratación</Label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <Input id="fecha_contratacion" type="date" className="pl-9" {...register('fecha_contratacion')} />
+                </div>
+              </div>
             )}
           </div>
-          <div className="flex-1">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageChange}
-              accept="image/*"
-              className="hidden"
-            />
-            <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-              {avatarPreview ? 'Cambiar foto' : 'Subir foto'}
+
+          <div className="flex gap-2 pt-4">
+            <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700" disabled={loading}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              {loading ? 'Guardando...' : isEdit ? 'Actualizar Usuario' : 'Crear Usuario'}
             </Button>
-            {avatarPreview && (
-              <Button type="button" variant="ghost" size="sm" className="ml-2 text-red-500" onClick={() => {
-                setAvatarPreview('')
-                setAvatarFile(null)
-                if (fileInputRef.current) fileInputRef.current.value = ''
-              }}>
-                <X className="h-4 w-4" />
+            {onCancel && (
+              <Button type="button" variant="outline" onClick={onCancel}>
+                Cancelar
               </Button>
             )}
           </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="nombre">Nombre *</Label>
-          <Input id="nombre" {...register('nombre')} />
-          {errors.nombre && <p className="text-xs text-red-500">{errors.nombre.message}</p>}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="apellido">Apellido *</Label>
-          <Input id="apellido" {...register('apellido')} />
-          {errors.apellido && <p className="text-xs text-red-500">{errors.apellido.message}</p>}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="email">Email *</Label>
-        <Input id="email" type="email" {...register('email')} />
-        {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="phone_number">Teléfono</Label>
-        <Input id="phone_number" placeholder="+52 1234567890" {...register('phone_number')} />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="pin">PIN * (mínimo 6 caracteres)</Label>
-        <Input 
-          id="pin" 
-          type="password" 
-          placeholder="123456" 
-          minLength={6}
-          {...register('pin')} 
-        />
-        {errors.pin && <p className="text-xs text-red-500">{errors.pin.message}</p>}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="rol">Rol</Label>
-        <Select 
-          value={watch('rol')} 
-          onValueChange={(value) => setValue('rol', value)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Seleccionar rol" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="bartender">Bartender</SelectItem>
-            <SelectItem value="mesero">Mesero</SelectItem>
-          </SelectContent>
-        </Select>
-        {errors.rol && <p className="text-xs text-red-500">{errors.rol.message}</p>}
-      </div>
-
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
-
-      <div className="flex justify-end gap-2 pt-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit" className="bg-purple-600 hover:bg-purple-700" disabled={loading}>
-          {loading ? 'Guardando...' : isEditing ? 'Actualizar' : 'Crear'}
-        </Button>
-      </div>
-    </form>
+          <div className="text-xs text-gray-400 mt-2 bg-blue-50 p-3 rounded-lg border border-blue-100">
+            <p className="font-medium text-blue-700">📌 Nota importante:</p>
+            {isEdit ? (
+              <p>Puedes actualizar la información del usuario. El rol de administrador no se puede cambiar.</p>
+            ) : (
+              <p>El usuario se creará en estado <strong>INACTIVO</strong> (excepto administradores).</p>
+            )}
+            <p>El administrador debe autorizarlo con el botón <strong>"Autorizar"</strong> para generar un NIP.</p>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
