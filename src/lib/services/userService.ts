@@ -6,7 +6,7 @@ export interface User {
   phone_number: string
   nombre: string
   apellido: string
-  rol: 'admin' | 'bartender' | 'mesero' | 'auditor'
+  rol: 'admin' | 'bartender' | 'mesero' | 'caja' | 'auditor'
   activo: boolean
   avatar_url?: string
   pin: string
@@ -53,13 +53,63 @@ export interface Mesero {
   avatar_url?: string
 }
 
+const ERROR_MESSAGES = {
+  RATE_LIMIT: 'Demasiados intentos. Por favor espera unos minutos antes de intentar de nuevo.',
+  ALREADY_REGISTERED: 'Este correo ya está registrado en el sistema. Usa otro correo o edita el usuario existente.',
+  INVALID_EMAIL: 'El correo electrónico no es válido. Verifica que esté bien escrito.',
+  WEAK_PASSWORD: 'La contraseña es muy débil. Intenta con una más segura.',
+  USER_NOT_FOUND: 'Usuario no encontrado en el sistema.',
+  PERMISSION_DENIED: 'No tienes permisos para realizar esta acción.',
+  NETWORK_ERROR: 'Error de conexión. Verifica tu internet e intenta de nuevo.',
+  UNKNOWN_ERROR: 'Ocurrió un error inesperado. Intenta de nuevo más tarde.',
+  EMAIL_RATE_LIMIT: 'Se alcanzó el límite de correos enviados. Contacta al administrador o espera una hora.',
+  NIP_EXPIRED: 'El NIP ha expirado. Solicita uno nuevo al administrador.',
+  NIP_INVALID: 'El NIP es inválido. Verifica que sean 6 dígitos.',
+  USER_INACTIVE: 'El usuario está desactivado. Contacta al administrador.',
+  RLS_VIOLATION: 'No tienes permisos para acceder a esta información.',
+  DUPLICATE_EMAIL: 'Ya existe un usuario con este correo electrónico.',
+  INVALID_ROLE: 'El rol especificado no es válido.',
+}
+
+function getErrorMessage(error: any): string {
+  const msg = error?.message?.toLowerCase() || ''
+  const code = error?.code || ''
+  
+  if (code === '23505' || msg.includes('duplicate key')) return ERROR_MESSAGES.DUPLICATE_EMAIL
+  if (code === '42501' || msg.includes('row-level security') || msg.includes('rls')) return ERROR_MESSAGES.RLS_VIOLATION
+  if (msg.includes('rate limit') && msg.includes('email')) return ERROR_MESSAGES.EMAIL_RATE_LIMIT
+  if (msg.includes('rate limit') || msg.includes('for security purposes')) return ERROR_MESSAGES.RATE_LIMIT
+  if (msg.includes('already registered') || msg.includes('already exists')) return ERROR_MESSAGES.ALREADY_REGISTERED
+  if (msg.includes('invalid email') || msg.includes('email address')) return ERROR_MESSAGES.INVALID_EMAIL
+  if (msg.includes('password')) return ERROR_MESSAGES.WEAK_PASSWORD
+  if (msg.includes('permission') || msg.includes('denied') || msg.includes('not authorized')) return ERROR_MESSAGES.PERMISSION_DENIED
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('connection')) return ERROR_MESSAGES.NETWORK_ERROR
+  if (msg.includes('not found') || msg.includes('no rows')) return ERROR_MESSAGES.USER_NOT_FOUND
+  
+  return error?.message || ERROR_MESSAGES.UNKNOWN_ERROR
+}
+
+function generarCodigo6Digitos(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString()
+}
+
+function calcularExpiracion(horas: number = 24): string {
+  const expiracion = new Date()
+  expiracion.setHours(expiracion.getHours() + horas)
+  return expiracion.toISOString()
+}
+
+function generarCodigoUsuario(): string {
+  return `USR-${Date.now().toString().slice(-6)}`
+}
+
 export const userService = {
   async getAll(rol?: string): Promise<User[]> {
     const supabase = createClient()
     let query = supabase.from('usuarios').select('*').order('nombre')
     if (rol) query = query.eq('rol', rol)
     const { data, error } = await query
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
     return data || []
   },
 
@@ -70,7 +120,18 @@ export const userService = {
       .select('*')
       .eq('id', id)
       .maybeSingle()
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
+    return data || null
+  },
+
+  async getByEmail(email: string): Promise<User | null> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('email', email)
+      .maybeSingle()
+    if (error) throw new Error(getErrorMessage(error))
     return data || null
   },
 
@@ -83,67 +144,89 @@ export const userService = {
       .select('*')
       .eq('id', user.id)
       .maybeSingle()
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
     return data || null
   },
 
   async updateUser(id: string, userData: Partial<User>): Promise<User> {
     const supabase = createClient()
+    const { email, id: _, ...safeData } = userData as any
+    
     const { data, error } = await supabase
       .from('usuarios')
-      .update({
-        ...userData,
-        updated_at: new Date().toISOString()
-      })
+      .update({ ...safeData, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .maybeSingle()
-    if (error) throw error
+    
+    if (error) throw new Error(getErrorMessage(error))
+    if (!data) throw new Error(ERROR_MESSAGES.USER_NOT_FOUND)
     return data as User
   },
 
   async updatePassword(id: string, newPassword: string): Promise<void> {
     const supabase = createClient()
-    const { error } = await supabase.auth.admin.updateUserById(
-      id,
-      { password: newPassword }
-    )
-    if (error) throw error
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) throw new Error(getErrorMessage(error))
+  },
+
+  async updateAvatar(id: string, avatarUrl: string): Promise<User> {
+    return this.updateUser(id, { avatar_url: avatarUrl })
   },
 
   async deleteUser(id: string): Promise<void> {
     const supabase = createClient()
     await supabase.from('bartenders').delete().eq('usuario_id', id)
     await supabase.from('meseros').delete().eq('usuario_id', id)
+    await supabase.from('notificaciones_mesero').delete().eq('mesero_id', id)
     const { error } = await supabase.from('usuarios').delete().eq('id', id)
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
   },
 
+  // ============================================================
+  // GENERAR NIP - ACTUALIZA TABLA USUARIOS Y AUTH.USERS
+  // ============================================================
   async generarNIP(usuarioId: string, adminId: string): Promise<string> {
     const supabase = createClient()
+    
+    // 1. Verificar que el admin existe
     const { data: adminCheck, error: adminError } = await supabase
       .from('usuarios')
       .select('id, email, rol')
       .eq('id', adminId)
+      .eq('rol', 'admin')
       .maybeSingle()
     
-    if (adminError || !adminCheck) {
-      throw new Error('Administrador no encontrado o no tiene permisos')
+    if (adminError) {
+      console.error('Error al verificar admin:', adminError)
+      throw new Error('Error al verificar permisos de administrador')
     }
     
-    if (adminCheck.rol !== 'admin') {
-      throw new Error('No tienes permisos de administrador')
+    if (!adminCheck) {
+      throw new Error(ERROR_MESSAGES.PERMISSION_DENIED)
     }
     
-    const codigo = Math.floor(100000 + Math.random() * 900000).toString()
-    const expiracion = new Date()
-    expiracion.setHours(expiracion.getHours() + 24)
+    // 2. Verificar que el usuario existe
+    const { data: usuarioCheck, error: usuarioError } = await supabase
+      .from('usuarios')
+      .select('id, email, rol')
+      .eq('id', usuarioId)
+      .maybeSingle()
     
+    if (usuarioError || !usuarioCheck) {
+      throw new Error(ERROR_MESSAGES.USER_NOT_FOUND)
+    }
+    
+    // 3. Generar NIP y expiración
+    const codigo = generarCodigo6Digitos()
+    const expiracion = calcularExpiracion(24)
+    
+    // 4. Actualizar tabla usuarios
     const { data, error } = await supabase
       .from('usuarios')
       .update({
         codigo_acceso: codigo,
-        codigo_expiracion: expiracion.toISOString(),
+        codigo_expiracion: expiracion,
         autorizado_por: adminId,
         activo: true,
         updated_at: new Date().toISOString()
@@ -152,8 +235,39 @@ export const userService = {
       .select()
       .maybeSingle()
     
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
+    if (!data) throw new Error(ERROR_MESSAGES.USER_NOT_FOUND)
+    
+    // 5. Actualizar contraseña en auth.users usando la función RPC
+    try {
+      const { error: rpcError } = await supabase.rpc('actualizar_password_auth', {
+        p_user_id: usuarioId,
+        p_new_password: codigo
+      })
+      
+      if (rpcError) {
+        console.error('⚠️ No se pudo actualizar la contraseña en auth.users:', rpcError)
+        console.error('El NIP se guardó en la tabla usuarios pero no funcionará para login')
+        console.error('Solución: Ejecuta la función actualizar_password_auth en Supabase')
+      }
+    } catch (rpcError) {
+      console.error('⚠️ Error al llamar RPC:', rpcError)
+    }
+    
     return codigo
+  },
+
+  async regenerarPIN(usuarioId: string): Promise<string> {
+    const supabase = createClient()
+    const nuevoPin = generarCodigo6Digitos()
+    
+    const { error } = await supabase
+      .from('usuarios')
+      .update({ pin: nuevoPin, updated_at: new Date().toISOString() })
+      .eq('id', usuarioId)
+    
+    if (error) throw new Error(getErrorMessage(error))
+    return nuevoPin
   },
 
   async verificarSoloCodigo(codigo: string): Promise<any> {
@@ -165,16 +279,16 @@ export const userService = {
       .maybeSingle()
     
     if (error || !data) {
-      return { valido: false, mensaje: 'NIP inválido' }
+      return { valido: false, mensaje: ERROR_MESSAGES.NIP_INVALID }
     }
     
     const expiracion = new Date(data.codigo_expiracion)
     if (expiracion < new Date()) {
-      return { valido: false, mensaje: 'El NIP ha expirado' }
+      return { valido: false, mensaje: ERROR_MESSAGES.NIP_EXPIRED }
     }
     
     if (!data.activo) {
-      return { valido: false, mensaje: 'Usuario desactivado' }
+      return { valido: false, mensaje: ERROR_MESSAGES.USER_INACTIVE }
     }
     
     return {
@@ -198,35 +312,37 @@ export const userService = {
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
   },
 
   async activarUsuario(id: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase
       .from('usuarios')
-      .update({
-        activo: true,
-        updated_at: new Date().toISOString()
-      })
+      .update({ activo: true, updated_at: new Date().toISOString() })
       .eq('id', id)
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
   },
 
   async getBartenders(): Promise<Bartender[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('bartenders')
-      .select(`
-        *,
-        usuarios (
-          id, nombre, apellido, email, phone_number,
-          avatar_url, activo, codigo_acceso, codigo_expiracion
-        )
-      `)
+      .select(`*, usuarios (id, nombre, apellido, email, phone_number, avatar_url, activo, codigo_acceso, codigo_expiracion)`)
       .order('nombre_completo')
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
     return data || []
+  },
+
+  async getBartenderById(id: string): Promise<Bartender | null> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('bartenders')
+      .select(`*, usuarios (id, nombre, apellido, email, phone_number, avatar_url, activo, codigo_acceso, codigo_expiracion)`)
+      .eq('id', id)
+      .maybeSingle()
+    if (error) throw new Error(getErrorMessage(error))
+    return data || null
   },
 
   async getBartenderByUsuarioId(usuarioId: string): Promise<Bartender | null> {
@@ -236,30 +352,35 @@ export const userService = {
       .select('*')
       .eq('usuario_id', usuarioId)
       .maybeSingle()
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
     return data || null
   },
 
   async deleteBartender(id: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase.from('bartenders').delete().eq('id', id)
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
   },
 
   async getMeseros(): Promise<Mesero[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('meseros')
-      .select(`
-        *,
-        usuarios (
-          id, nombre, apellido, email, phone_number,
-          avatar_url, activo, codigo_acceso, codigo_expiracion
-        )
-      `)
+      .select(`*, usuarios (id, nombre, apellido, email, phone_number, avatar_url, activo, codigo_acceso, codigo_expiracion)`)
       .order('nombre_completo')
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
     return data || []
+  },
+
+  async getMeseroById(id: string): Promise<Mesero | null> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('meseros')
+      .select(`*, usuarios (id, nombre, apellido, email, phone_number, avatar_url, activo, codigo_acceso, codigo_expiracion)`)
+      .eq('id', id)
+      .maybeSingle()
+    if (error) throw new Error(getErrorMessage(error))
+    return data || null
   },
 
   async getMeseroByUsuarioId(usuarioId: string): Promise<Mesero | null> {
@@ -269,14 +390,14 @@ export const userService = {
       .select('*')
       .eq('usuario_id', usuarioId)
       .maybeSingle()
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
     return data || null
   },
 
   async deleteMesero(id: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase.from('meseros').delete().eq('id', id)
-    if (error) throw error
+    if (error) throw new Error(getErrorMessage(error))
   },
 
   async uploadBartenderFoto(file: File, bartenderId: string, usuarioId: string): Promise<string> {
@@ -284,21 +405,14 @@ export const userService = {
     const extension = file.name.split('.').pop()
     const fileName = `${Date.now()}.${extension}`
     const path = `bartenders/${bartenderId}/${fileName}`
-    
     const { error: uploadError } = await supabase.storage
       .from('barranco-images')
       .upload(path, file, { cacheControl: '3600', upsert: true })
-    
-    if (uploadError) throw uploadError
-    
-    const { data: urlData } = supabase.storage
-      .from('barranco-images')
-      .getPublicUrl(path)
-    
+    if (uploadError) throw new Error(getErrorMessage(uploadError))
+    const { data: urlData } = supabase.storage.from('barranco-images').getPublicUrl(path)
     const avatarUrl = urlData.publicUrl
     await supabase.from('bartenders').update({ foto_url: avatarUrl }).eq('id', bartenderId)
     await supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', usuarioId)
-    
     return avatarUrl
   },
 
@@ -307,21 +421,14 @@ export const userService = {
     const extension = file.name.split('.').pop()
     const fileName = `${Date.now()}.${extension}`
     const path = `meseros/${meseroId}/${fileName}`
-    
     const { error: uploadError } = await supabase.storage
       .from('barranco-images')
       .upload(path, file, { cacheControl: '3600', upsert: true })
-    
-    if (uploadError) throw uploadError
-    
-    const { data: urlData } = supabase.storage
-      .from('barranco-images')
-      .getPublicUrl(path)
-    
+    if (uploadError) throw new Error(getErrorMessage(uploadError))
+    const { data: urlData } = supabase.storage.from('barranco-images').getPublicUrl(path)
     const avatarUrl = urlData.publicUrl
     await supabase.from('meseros').update({ foto_url: avatarUrl }).eq('id', meseroId)
     await supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', usuarioId)
-    
     return avatarUrl
   },
 
@@ -330,20 +437,13 @@ export const userService = {
     const extension = file.name.split('.').pop()
     const fileName = `${Date.now()}.${extension}`
     const path = `admins/${usuarioId}/${fileName}`
-    
     const { error: uploadError } = await supabase.storage
       .from('barranco-images')
       .upload(path, file, { cacheControl: '3600', upsert: true })
-    
-    if (uploadError) throw uploadError
-    
-    const { data: urlData } = supabase.storage
-      .from('barranco-images')
-      .getPublicUrl(path)
-    
+    if (uploadError) throw new Error(getErrorMessage(uploadError))
+    const { data: urlData } = supabase.storage.from('barranco-images').getPublicUrl(path)
     const avatarUrl = urlData.publicUrl
     await supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', usuarioId)
-    
     return avatarUrl
   },
 
@@ -352,23 +452,43 @@ export const userService = {
     nombre: string
     apellido: string
     telefono?: string
-    rol: 'admin' | 'bartender' | 'mesero'
+    rol: 'admin' | 'bartender' | 'mesero' | 'caja'
   }): Promise<{ userId: string; email: string; rol: string; nip?: string }> {
     const supabase = createClient()
-    const pinSeisDigitos = Math.floor(100000 + Math.random() * 900000).toString()
-    const password = data.rol === 'admin' ? 'Admin123!' : pinSeisDigitos
     
+    if (!data.email || !data.nombre || !data.apellido) {
+      throw new Error('Email, nombre y apellido son obligatorios')
+    }
+    
+    const rolesValidos = ['admin', 'bartender', 'mesero', 'caja']
+    if (!rolesValidos.includes(data.rol)) {
+      throw new Error(ERROR_MESSAGES.INVALID_ROLE)
+    }
+
+    const nipGenerado = generarCodigo6Digitos()
+    const pinSeisDigitos = generarCodigo6Digitos()
+    const password = data.rol === 'admin' ? 'Admin123!' : nipGenerado
+    const expiracion = calcularExpiracion(24)
+
+    // 1. Crear usuario en auth.users
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: data.email,
       password: password,
-      options: { data: { nombre: data.nombre, apellido: data.apellido, rol: data.rol } }
+      options: {
+        data: {
+          nombre: data.nombre,
+          apellido: data.apellido,
+          rol: data.rol,
+        },
+      }
     })
-    
-    if (authError || !authData.user) {
-      throw authError || new Error('No se pudo crear el usuario')
-    }
-    
+
+    if (authError) throw new Error(getErrorMessage(authError))
+    if (!authData.user) throw new Error(ERROR_MESSAGES.UNKNOWN_ERROR)
+
     const userId = authData.user.id
+
+    // 2. Crear registro en tabla usuarios
     const userInsert: any = {
       id: userId,
       email: data.email,
@@ -378,22 +498,20 @@ export const userService = {
       pin: pinSeisDigitos,
       rol: data.rol,
       telefono: data.telefono || null,
-      activo: data.rol === 'admin' ? true : false,
+      phone_number: data.telefono || null,
+      activo: true,
       email_verificado: true,
-      created_at: new Date().toISOString()
+      codigo_acceso: data.rol !== 'admin' ? nipGenerado : null,
+      codigo_expiracion: data.rol !== 'admin' ? expiracion : null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }
 
-    let nipGenerado = null
-    if (data.rol === 'bartender' || data.rol === 'mesero') {
-      nipGenerado = Math.floor(100000 + Math.random() * 900000).toString()
-      const expiracion = new Date()
-      expiracion.setHours(expiracion.getHours() + 24)
-      userInsert.codigo_acceso = nipGenerado
-      userInsert.codigo_expiracion = expiracion.toISOString()
-    }
+    const { error: userError } = await supabase.from('usuarios').insert([userInsert])
+    if (userError) throw new Error(getErrorMessage(userError))
 
-    await supabase.from('usuarios').insert([userInsert])
-    const codigo = `USR-${Date.now().toString().slice(-6)}`
+    // 3. Crear registro específico según el rol
+    const codigo = generarCodigoUsuario()
     const nombre_completo = `${data.nombre} ${data.apellido}`
 
     if (data.rol === 'bartender') {
@@ -402,7 +520,7 @@ export const userService = {
         codigo: `BT-${codigo}`,
         nombre_completo: nombre_completo,
         fecha_contratacion: new Date().toISOString().split('T')[0],
-        activo: false,
+        activo: true,
         turno_activo: false
       })
     } else if (data.rol === 'mesero') {
@@ -411,45 +529,33 @@ export const userService = {
         codigo: `MS-${codigo}`,
         nombre_completo: nombre_completo,
         fecha_contratacion: new Date().toISOString().split('T')[0],
-        activo: false,
+        activo: true,
         turno_activo: false
       })
-    }
-
-    if (data.rol === 'admin') {
-      await supabase.from('usuarios').update({ activo: true }).eq('id', userId)
     }
 
     return { 
       userId, 
       email: data.email, 
       rol: data.rol,
-      nip: nipGenerado || undefined 
+      nip: data.rol !== 'admin' ? nipGenerado : undefined 
     }
   },
 
   async getCounters() {
     const supabase = createClient()
-    const { count: bartenders } = await supabase
-      .from('bartenders')
-      .select('*', { count: 'exact', head: true })
-      .eq('activo', true)
-    
-    const { count: meseros } = await supabase
-      .from('meseros')
-      .select('*', { count: 'exact', head: true })
-      .eq('activo', true)
-    
-    const { count: admins } = await supabase
-      .from('usuarios')
-      .select('*', { count: 'exact', head: true })
-      .eq('rol', 'admin')
-      .eq('activo', true)
+    const [bartendersRes, meserosRes, adminsRes, cajasRes] = await Promise.all([
+      supabase.from('bartenders').select('*', { count: 'exact', head: true }).eq('activo', true),
+      supabase.from('meseros').select('*', { count: 'exact', head: true }).eq('activo', true),
+      supabase.from('usuarios').select('*', { count: 'exact', head: true }).eq('rol', 'admin').eq('activo', true),
+      supabase.from('usuarios').select('*', { count: 'exact', head: true }).eq('rol', 'caja').eq('activo', true)
+    ])
     
     return {
-      bartenders: bartenders || 0,
-      meseros: meseros || 0,
-      admins: admins || 0
+      bartenders: bartendersRes.count || 0,
+      meseros: meserosRes.count || 0,
+      admins: adminsRes.count || 0,
+      cajas: cajasRes.count || 0
     }
   }
 }

@@ -1,36 +1,47 @@
 import { createBrowserClient } from '@supabase/ssr'
 
-export function createClient() {
+// ============================================================
+// CLIENTE DE SUPABASE POR ROL
+// Cada rol tiene su propia sesión aislada en localStorage
+// ============================================================
+
+function detectarRol(): string {
+  if (typeof window === 'undefined') return 'default'
+  
+  const path = window.location.pathname
+  
+  if (path.startsWith('/admin') || path.includes('admin-login')) return 'admin'
+  if (path.startsWith('/bartender') || path.includes('bartender-login')) return 'bartender'
+  if (path.startsWith('/mesero') || path.includes('mesero-login')) return 'mesero'
+  if (path.startsWith('/caja') || path.includes('caja-login')) return 'caja'
+  
+  return 'default'
+}
+
+export function createClient(rolForzado?: string) {
+  const rol = rolForzado || detectarRol()
+  const storageKey = `barranco-session-${rol}`
+  
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        storageKey: storageKey,
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false, // IMPORTANTE: evita conflictos entre pestañas
+      },
+      cookieOptions: {
+        name: storageKey,
+      },
+    }
   )
 }
 
-// Función para manejar errores de autenticación
-export function getAuthErrorMessage(error: any): string {
-  if (!error) return 'Error desconocido'
-  
-  const message = error.message || ''
-  
-  if (message.includes('Invalid login credentials')) {
-    return '❌ Credenciales incorrectas. Verifica tu email y contraseña.'
-  }
-  if (message.includes('Email not confirmed')) {
-    return '📧 Por favor, confirma tu email antes de iniciar sesión.'
-  }
-  if (message.includes('User not found')) {
-    return '👤 Usuario no encontrado. Contacta al administrador.'
-  }
-  if (message.includes('Network error')) {
-    return '🌐 Error de red. Verifica tu conexión a internet.'
-  }
-  if (message.includes('Too many requests')) {
-    return '⏳ Demasiados intentos. Espera unos minutos e inténtalo de nuevo.'
-  }
-  if (message.includes('Password')) {
-    return '🔑 Contraseña incorrecta. Inténtalo de nuevo.'
-  }
-  
-  return message
-}
+// Cliente específico por rol (para usar en cada login)
+export const createAdminClient = () => createClient('admin')
+export const createBartenderClient = () => createClient('bartender')
+export const createMeseroClient = () => createClient('mesero')
+export const createCajaClient = () => createClient('caja')

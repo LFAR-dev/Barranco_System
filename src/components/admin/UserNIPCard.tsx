@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Key, Clock, RefreshCw, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { Key, Clock, RefreshCw, CheckCircle, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { userService } from '@/lib/services/userService'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/useAuth'
 
 interface UserNIPCardProps {
   usuarioId: string
@@ -23,6 +24,7 @@ export function UserNIPCard({ usuarioId, usuarioNombre, onNIPChange }: UserNIPCa
   const [showNip, setShowNip] = useState(false)
   const [generating, setGenerating] = useState(false)
   const { toast } = useToast()
+  const { user } = useAuth()
   const supabase = createClient()
 
   useEffect(() => {
@@ -40,42 +42,41 @@ export function UserNIPCard({ usuarioId, usuarioNombre, onNIPChange }: UserNIPCa
       if (error) throw error
       setNipData(data)
     } catch (error) {
-      console.error('Error fetching NIP data:', error)
+      console.error('Error al cargar NIP:', error)
     }
   }
 
   const generarNIP = async () => {
+    if (!user || user.rol !== 'admin') {
+      toast({
+        title: '❌ Error',
+        description: 'Solo los administradores pueden generar NIPs',
+        variant: 'destructive'
+      })
+      return
+    }
+
     setGenerating(true)
     try {
-      const adminUser = await supabase.auth.getUser()
-      const adminId = adminUser.data.user?.id
-
-      if (!adminId) {
-        toast({
-          title: 'Error',
-          description: 'No se pudo identificar al administrador',
-          variant: 'destructive'
-        })
-        return
-      }
-
-      const codigo = await userService.generarNIP(usuarioId, adminId)
+      const codigo = await userService.generarNIP(usuarioId, user.id)
       await fetchNIPData()
       setShowNip(true)
       
       toast({
         title: '✅ NIP Generado',
         description: `Nuevo NIP para ${usuarioNombre}: ${codigo}`,
-        variant: 'success'
+        variant: 'success',
+        duration: 10000
       })
 
       if (onNIPChange) onNIPChange()
 
-      setTimeout(() => setShowNip(false), 30000)
+      setTimeout(() => setShowNip(false), 60000)
     } catch (error: any) {
+      console.error('Error al generar NIP:', error)
       toast({
-        title: 'Error',
-        description: error.message || 'Error al generar el NIP',
+        title: '❌ Error',
+        description: error.message || 'No se pudo generar el NIP. Intenta de nuevo.',
         variant: 'destructive'
       })
     } finally {
@@ -103,7 +104,7 @@ export function UserNIPCard({ usuarioId, usuarioNombre, onNIPChange }: UserNIPCa
           disabled={generating}
         >
           {generating ? (
-            <div className="h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <>
               <RefreshCw className="h-3 w-3" />
@@ -122,7 +123,7 @@ export function UserNIPCard({ usuarioId, usuarioNombre, onNIPChange }: UserNIPCa
             </Badge>
             <span className="text-xs text-gray-400 flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Expira: {new Date(expiracion!).toLocaleString()}
+              Expira: {new Date(expiracion!).toLocaleString('es-MX')}
             </span>
           </div>
           {showNip ? (
@@ -132,7 +133,7 @@ export function UserNIPCard({ usuarioId, usuarioNombre, onNIPChange }: UserNIPCa
                 {nip}
               </p>
               <div className="flex items-center gap-2 mt-1">
-                <p className="text-xs text-gray-500">Expira en 24 horas desde su generación</p>
+                <p className="text-xs text-gray-500">Expira en 24 horas</p>
                 <Button
                   size="sm"
                   variant="ghost"

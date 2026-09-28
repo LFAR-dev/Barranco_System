@@ -3,18 +3,18 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Key, Loader2 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ArrowLeft, Key, DollarSign, Loader2 } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { createMeseroClient } from '@/lib/supabase/client'
+import { createCajaClient } from '@/lib/supabase/client'
 import { userService } from '@/lib/services/userService'
 
-export default function MeseroLoginPage() {
+export default function CajaLoginPage() {
   const router = useRouter()
-  const supabase = createMeseroClient()
+  const supabase = createCajaClient()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [codigo, setCodigo] = useState('')
@@ -34,8 +34,8 @@ export default function MeseroLoginPage() {
             .eq('id', session.user.id)
             .maybeSingle()
           
-          if (perfil?.rol === 'mesero' && isMounted) {
-            router.push('/mesero')
+          if (perfil?.rol === 'caja' && isMounted) {
+            router.push('/caja')
             return
           }
         }
@@ -70,7 +70,7 @@ export default function MeseroLoginPage() {
       const result = await userService.verificarSoloCodigo(codigo.trim())
       
       if (!result?.valido) throw new Error(result?.mensaje || 'NIP inválido o expirado')
-      if (result.rol !== 'mesero') throw new Error('Este NIP no corresponde a un mesero')
+      if (result.rol !== 'caja') throw new Error('Este NIP no corresponde a un usuario de caja')
 
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: result.email,
@@ -98,7 +98,7 @@ export default function MeseroLoginPage() {
         })
         .eq('id', data.user.id)
 
-      router.push('/mesero')
+      router.push('/caja')
     } catch (err: any) {
       setError(err.message || 'Error al verificar el NIP')
     } finally {
@@ -108,9 +108,9 @@ export default function MeseroLoginPage() {
 
   if (checkingSession) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-12 w-12 text-orange-600 animate-spin" />
+          <Loader2 className="h-12 w-12 text-emerald-600 animate-spin" />
           <p className="text-gray-500">Verificando sesión...</p>
         </div>
       </div>
@@ -118,12 +118,12 @@ export default function MeseroLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-yellow-50 to-amber-50 flex items-center justify-center p-3 sm:p-4 md:p-6">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center p-3 sm:p-4 md:p-6">
       <div className="w-full max-w-md">
         <div className="text-center mb-6 sm:mb-8">
           <div className="inline-flex items-center justify-center p-2 sm:p-3 bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg mb-3 sm:mb-4">
             <span className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">BARRANCO</span>
-            <span className="ml-2 text-[10px] sm:text-xs font-semibold text-orange-600 bg-orange-100 px-2 sm:px-3 py-1 rounded-full">MESERO</span>
+            <span className="ml-2 text-[10px] sm:text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 sm:px-3 py-1 rounded-full">CAJA</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-semibold text-gray-700">Acceso con NIP</h2>
         </div>
@@ -131,7 +131,7 @@ export default function MeseroLoginPage() {
         <Card className="shadow-2xl border-0">
           <CardHeader className="p-4 sm:p-6">
             <CardTitle className="text-xl sm:text-2xl text-center flex items-center justify-center gap-2">
-              <Key className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" />
+              <DollarSign className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-600" />
               Ingresa tu NIP
             </CardTitle>
           </CardHeader>
@@ -166,7 +166,7 @@ export default function MeseroLoginPage() {
 
               <Button 
                 type="submit" 
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white h-11 sm:h-12"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-11 sm:h-12"
                 disabled={loading || codigo.length < 6 || retryAfter > 0}
               >
                 {loading ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Shield, GlassWater, Users, ArrowRight } from "lucide-react";
+import { Shield, GlassWater, Users, DollarSign, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -17,7 +17,17 @@ export default function Home() {
       bgColor: "bg-blue-50",
       href: "/admin-login",
       tagline: "Control total. Rentabilidad real.",
-      iconBg: "bg-blue-100",
+    },
+    {
+      id: "caja",
+      title: "CAJA",
+      description: "Gestiona cobros, pedidos y cierre de caja.",
+      icon: DollarSign,
+      color: "from-emerald-600 to-emerald-800",
+      hoverColor: "hover:border-emerald-500",
+      bgColor: "bg-emerald-50",
+      href: "/caja-login",
+      tagline: "Control de pagos y pedidos.",
     },
     {
       id: "bartender",
@@ -29,8 +39,8 @@ export default function Home() {
       bgColor: "bg-green-50",
       href: "/bartender-login",
       tagline: "Acceso con código de seguridad.",
-      iconBg: "bg-green-100",
     },
+    
     {
       id: "mesero",
       title: "MESERO",
@@ -41,14 +51,12 @@ export default function Home() {
       bgColor: "bg-orange-50",
       href: "/mesero-login",
       tagline: "Acceso con código de seguridad.",
-      iconBg: "bg-orange-100",
     },
   ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 flex items-center justify-center p-3 sm:p-4 md:p-6">
       <div className="w-full max-w-6xl mx-auto">
-        {/* Logo y título */}
         <div className="text-center mb-6 sm:mb-8 md:mb-12">
           <div className="inline-flex items-center justify-center p-2 sm:p-3 bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg mb-3 sm:mb-4">
             <span className="text-2xl sm:text-3xl md:text-4xl font-black text-gray-900 tracking-tight">
@@ -66,8 +74,7 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Tarjetas de roles - Grid responsive */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 max-w-6xl mx-auto">
           {roles.map((role) => {
             const Icon = role.icon;
             return (
@@ -105,7 +112,6 @@ export default function Home() {
           })}
         </div>
 
-        {/* Footer */}
         <div className="text-center mt-6 sm:mt-8 md:mt-12">
           <p className="text-[10px] sm:text-xs text-gray-400">
             © {new Date().getFullYear()} Barranco Intelligence System. Todos los derechos reservados.

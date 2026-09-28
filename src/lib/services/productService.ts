@@ -7,6 +7,7 @@ export interface Product {
   categoria_id: string
   presentacion: string
   volumen_ml: number
+  unidad_medida?: string
   costo_unitario: number
   precio_venta: number
   stock_actual: number
@@ -15,6 +16,29 @@ export interface Product {
   activo: boolean
   imagen_url?: string
   categoria_nombre?: string
+  es_bebida_principal?: boolean
+  es_insumo?: boolean
+  es_paquete?: boolean
+  qr_token?: string
+}
+
+export interface MovimientoInventario {
+  id: string
+  producto_id: string
+  tipo_movimiento: 'entrada' | 'salida' | 'ajuste'
+  cantidad_movimiento: number
+  stock_anterior: number
+  stock_posterior: number
+  motivo?: string
+  observaciones?: string
+  usuario_id: string
+  referencia_tipo?: string
+  referencia_id?: string
+  fecha: string
+  usuarios?: {
+    nombre: string
+    apellido: string
+  }
 }
 
 export const productService = {
@@ -22,7 +46,6 @@ export const productService = {
     const supabase = createClient()
     
     try {
-      // Intentar con join (ahora debería funcionar con las nuevas políticas)
       const { data, error } = await supabase
         .from('productos')
         .select(`
@@ -126,6 +149,28 @@ export const productService = {
     } as Product
   },
 
+  async getByQrToken(qrToken: string): Promise<Product | null> {
+    const supabase = createClient()
+    
+    const { data, error } = await supabase
+      .from('productos')
+      .select(`
+        *,
+        categorias (nombre)
+      `)
+      .eq('qr_token', qrToken)
+      .eq('activo', true)
+      .maybeSingle()
+    
+    if (error) throw error
+    if (!data) return null
+    
+    return {
+      ...data,
+      categoria_nombre: data.categorias?.nombre || 'Sin categoría'
+    } as Product
+  },
+
   async create(product: any): Promise<Product> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -171,5 +216,78 @@ export const productService = {
       .from('barranco-images')
       .getPublicUrl(`productos/${path}`)
     return urlData.publicUrl
+  },
+
+  // ============================================================
+  // NUEVAS FUNCIONES PARA QR Y MOVIMIENTOS
+  // ============================================================
+
+  async registrarMovimiento(data: {
+    producto_id: string
+    tipo_movimiento: 'entrada' | 'salida' | 'ajuste'
+    cantidad: number
+    motivo?: string
+    observaciones?: string
+    usuario_id: string
+  }): Promise<MovimientoInventario> {
+    const supabase = createClient()
+    
+    const { data: result, error } = await supabase.rpc('registrar_movimiento_inventario', {
+      p_producto_id: data.producto_id,
+      p_tipo_movimiento: data.tipo_movimiento,
+      p_cantidad: data.cantidad,
+      p_motivo: data.motivo || null,
+      p_observaciones: data.observaciones || null,
+      p_usuario_id: data.usuario_id
+    })
+    
+    if (error) throw error
+    
+    return result as MovimientoInventario
+  },
+
+  async getMovimientos(productoId: string, limit = 50): Promise<MovimientoInventario[]> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('movimientos_inventario')
+      .select(`
+        *,
+        usuarios (nombre, apellido)
+      `)
+      .eq('producto_id', productoId)
+      .order('fecha', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return data || []
+  },
+
+  async getMovimientosRecientes(limit = 100): Promise<MovimientoInventario[]> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('movimientos_inventario')
+      .select(`
+        *,
+        usuarios (nombre, apellido),
+        productos (nombre)
+      `)
+      .order('fecha', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return data || []
+  },
+
+  async getMovimientosByUsuario(usuarioId: string, limit = 50): Promise<MovimientoInventario[]> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('movimientos_inventario')
+      .select(`
+        *,
+        productos (nombre)
+      `)
+      .eq('usuario_id', usuarioId)
+      .order('fecha', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return data || []
   }
 }

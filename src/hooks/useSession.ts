@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export interface SessionUser {
@@ -8,154 +8,159 @@ export interface SessionUser {
   email: string
   nombre: string
   apellido: string
-  rol: 'admin' | 'bartender' | 'mesero'
+  rol: 'admin' | 'bartender' | 'mesero' | 'caja'
   avatar_url?: string
   turno_activo?: boolean
   phone_number?: string
 }
 
-export function useSession() {
+export function useSession(rolForzado?: string) {
   const [user, setUser] = useState<SessionUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentRol, setCurrentRol] = useState<string | null>(null)
-  const supabase = createClient()
+
+  // Crear el cliente UNA sola vez con el rol correcto
+  const supabase = useMemo(() => createClient(rolForzado), [rolForzado])
 
   useEffect(() => {
+    let isMounted = true
+
     const loadSession = async () => {
       try {
-        setLoading(true)
-        
-        // 1. Obtener el rol de la URL
+        // Detectar rol esperado según la URL
         const path = window.location.pathname
-        let rol = 'admin'
-        if (path.includes('/bartender')) rol = 'bartender'
-        else if (path.includes('/mesero')) rol = 'mesero'
-        else if (path.includes('/admin')) rol = 'admin'
+        let expectedRol: string | null = rolForzado || null
         
-        setCurrentRol(rol)
+        if (!expectedRol) {
+          if (path.startsWith('/admin') && !path.includes('-login')) expectedRol = 'admin'
+          else if (path.startsWith('/bartender') && !path.includes('-login')) expectedRol = 'bartender'
+          else if (path.startsWith('/mesero') && !path.includes('-login')) expectedRol = 'mesero'
+          else if (path.startsWith('/caja') && !path.includes('-login')) expectedRol = 'caja'
+        }
 
-        // 2. Obtener sesión de Supabase
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        if (isMounted) setCurrentRol(expectedRol)
+
+        const { data: { session } } = await supabase.auth.getSession()
         
-        if (sessionError) {
-          console.error('Error getting session:', sessionError)
-          setLoading(false)
+        if (!session?.user) {
+          if (isMounted) {
+            setUser(null)
+            setLoading(false)
+          }
           return
         }
 
-        if (session?.user) {
-          // 3. Obtener datos completos del usuario desde la tabla usuarios
-          const { data: userData, error: userError } = await supabase
-            .from('usuarios')
-            .select('*')
-            .eq('id', session.user.id)
-            .single()
+        const { data: userData } = await supabase
+          .from('usuarios')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle()
 
-          if (userError) {
-            console.error('Error getting user data:', userError)
+        if (!userData) {
+          if (isMounted) {
+            setUser(null)
             setLoading(false)
-            return
           }
-
-          if (userData) {
-            // Verificar que el rol coincida con la URL
-            if (userData.rol !== rol) {
-              console.warn(`Rol mismatch: URL expects ${rol}, user has ${userData.rol}`)
-              setLoading(false)
-              return
-            }
-
-            const sessionUser: SessionUser = {
-              id: userData.id,
-              email: userData.email,
-              nombre: userData.nombre || '',
-              apellido: userData.apellido || '',
-              rol: userData.rol,
-              avatar_url: userData.avatar_url || null,
-              turno_activo: userData.turno_activo || false,
-              phone_number: userData.phone_number || ''
-            }
-            
-            setUser(sessionUser)
-            setLoading(false)
-            return
-          }
+          return
         }
 
-        // Si no hay sesión, user se queda null
-        setUser(null)
-        setLoading(false)
+        const sessionUser: SessionUser = {
+          id: userData.id,
+          email: userData.email,
+          nombre: userData.nombre || '',
+          apellido: userData.apellido || '',
+          rol: userData.rol,
+          avatar_url: userData.avatar_url || null,
+          turno_activo: userData.turno_activo || false,
+          phone_number: userData.phone_number || ''
+        }
+        
+        if (isMounted) {
+          setUser(sessionUser)
+          setLoading(false)
+        }
 
       } catch (error) {
-        console.error('Error loading session:', error)
-        setUser(null)
-        setLoading(false)
+        console.error('Error al cargar sesión:', error)
+        if (isMounted) {
+          setUser(null)
+          setLoading(false)
+        }
       }
     }
 
     loadSession()
-  }, [supabase])
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: any) => {
+      if (!isMounted) return
+      
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setCurrentRol(null)
+        setLoading(false)
+      } else if (event === 'SIGNED_IN' && session) {
+        loadSession()
+      }
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase, rolForzado])
 
   const login = async (email: string, password: string, rol: string): Promise<SessionUser> => {
-    try {
-      // 1. Iniciar sesión en Supabase Auth
-      const { data, error } = await supabase.auth.signInWithPassword({ 
-        email, 
-        password 
-      })
-      
-      if (error) throw error
-      
-      if (!data.user) {
-        throw new Error('No se pudo obtener el usuario')
-      }
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ 
+      email, 
+      password 
+    })
+    
+    if (signInError) throw new Error(signInError.message)
+    if (!data.user) throw new Error('No se pudo obtener el usuario')
 
-      // 2. Obtener datos del usuario desde la tabla usuarios
-      const { data: userData, error: userError } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('id', data.user.id)
-        .single()
+    const { data: userData, error: userError } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('id', data.user.id)
+      .maybeSingle()
 
-      if (userError) throw userError
-
-      if (!userData) {
-        throw new Error('Usuario no encontrado en la base de datos')
-      }
-
-      // 3. Verificar que el rol coincida
-      if (userData.rol !== rol) {
-        throw new Error(`No tienes permisos de ${rol}`)
-      }
-
-      // 4. Crear objeto de sesión
-      const sessionUser: SessionUser = {
-        id: userData.id,
-        email: userData.email,
-        nombre: userData.nombre || '',
-        apellido: userData.apellido || '',
-        rol: userData.rol,
-        avatar_url: userData.avatar_url || null,
-        turno_activo: userData.turno_activo || false,
-        phone_number: userData.phone_number || ''
-      }
-
-      setUser(sessionUser)
-      setCurrentRol(rol)
-
-      return sessionUser
-
-    } catch (error) {
-      console.error('Login error:', error)
-      throw error
+    if (userError || !userData) {
+      await supabase.auth.signOut()
+      throw new Error('Usuario no encontrado en la base de datos')
     }
+
+    if (userData.rol !== rol) {
+      await supabase.auth.signOut()
+      throw new Error(`No tienes permisos de ${rol}`)
+    }
+
+    if (!userData.activo) {
+      await supabase.auth.signOut()
+      throw new Error('Usuario desactivado. Contacta al administrador.')
+    }
+
+    const sessionUser: SessionUser = {
+      id: userData.id,
+      email: userData.email,
+      nombre: userData.nombre || '',
+      apellido: userData.apellido || '',
+      rol: userData.rol,
+      avatar_url: userData.avatar_url || null,
+      turno_activo: userData.turno_activo || false,
+      phone_number: userData.phone_number || ''
+    }
+
+    setUser(sessionUser)
+    setCurrentRol(rol)
+
+    return sessionUser
   }
 
   const logout = async () => {
     try {
       await supabase.auth.signOut()
     } catch (error) {
-      console.error('Logout error:', error)
+      console.error('Error al cerrar sesión:', error)
     } finally {
       setUser(null)
       setCurrentRol(null)

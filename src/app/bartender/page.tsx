@@ -104,7 +104,7 @@ export default function BartenderDashboard() {
     router.push('/')
   }
 
-  const actualizarEstado = async (pedidoId: string, nuevoEstado: string) => {
+  const actualizarEstado = async (pedidoId: string, nuevoEstado: "pendiente" | "preparando" | "listo" | "servido" | "cancelado") => {
     try {
       await orderService.updateOrder(pedidoId, { estado: nuevoEstado })
       
