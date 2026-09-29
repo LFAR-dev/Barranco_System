@@ -20,6 +20,7 @@ import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
 import { ToggleDisponibilidad } from '@/components/shared/ToggleDisponibilidad'
 import { BotonReceta } from '@/components/shared/BotonReceta'
+import { HeaderRol } from '@/components/layout/HeaderRol'
 import {
   Dialog,
   DialogContent,
@@ -38,7 +39,6 @@ export default function BartenderDashboard() {
   const [pedidos, setPedidos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMermaOpen, setIsMermaOpen] = useState(false)
-  const [selectedPedido, setSelectedPedido] = useState<any>(null)
   const [mermaData, setMermaData] = useState({
     producto: '',
     cantidad: 0,
@@ -186,9 +186,9 @@ export default function BartenderDashboard() {
 
   const getStatusIcon = (estado: string) => {
     switch (estado) {
-      case 'pendiente': return <Clock className="h-4 w-4" />
-      case 'preparando': return <Coffee className="h-4 w-4" />
-      case 'listo': return <CheckCircle className="h-4 w-4" />
+      case 'pendiente': return <Clock className="h-3 w-3" />
+      case 'preparando': return <Coffee className="h-3 w-3" />
+      case 'listo': return <CheckCircle className="h-3 w-3" />
       default: return null
     }
   }
@@ -208,106 +208,93 @@ export default function BartenderDashboard() {
     <div className="min-h-screen bg-gray-50">
       <JornadaCerradaOverlay isOpen={!jornadaActiva && !jornadaLoading} />
 
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <span className="text-xl font-bold text-gray-900">BARRANCO</span>
-              <span className="ml-2 text-xs font-semibold text-green-600 bg-green-100 px-2 py-1 rounded-full">Bartender</span>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              {user?.id && <ToggleDisponibilidad rol="bartender" usuarioId={user.id} />}
-              <NotificationBell bartenderId={user?.id || ''} />
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="text-red-600 border-red-200 hover:bg-red-50"
-                onClick={() => setIsMermaOpen(true)}
-              >
-                <TrendingUp className="h-4 w-4 mr-1" />
-                Merma
-              </Button>
-              <Avatar className="cursor-pointer">
-                <AvatarFallback className="bg-green-600 text-white">
-                  {user?.nombre?.charAt(0) || 'B'}
-                </AvatarFallback>
-              </Avatar>
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-600 hover:text-gray-900">
-                <LogOut className="h-4 w-4 mr-1" />
-                Salir
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <HeaderRol
+        rol="bartender"
+        userName={`${user?.nombre || ''} ${user?.apellido || ''}`.trim()}
+        userEmail={user?.email}
+        onLogout={handleLogout}
+      >
+        {user?.id && <ToggleDisponibilidad rol="bartender" usuarioId={user.id} />}
+        <NotificationBell bartenderId={user?.id || ''} />
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="text-red-600 border-red-200 hover:bg-red-50 whitespace-nowrap"
+          onClick={() => setIsMermaOpen(true)}
+        >
+          <TrendingUp className="h-4 w-4 sm:mr-1" />
+          <span className="hidden sm:inline">Merma</span>
+        </Button>
+      </HeaderRol>
 
-      <main className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+      <main className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
               ¡Hola, {user?.nombre || user?.email?.split('@')[0] || 'Bartender'}!
             </h1>
-            <p className="text-gray-500">Gestiona los pedidos de la barra</p>
+            <p className="text-sm text-gray-500">Gestiona los pedidos de la barra</p>
           </div>
           <Button 
             variant="outline" 
+            size="sm"
             onClick={fetchPedidos}
-            className="text-gray-600"
+            className="text-gray-600 shrink-0"
           >
-            <Loader2 className="h-4 w-4 mr-2" />
-            Actualizar
+            <Loader2 className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Actualizar</span>
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-4 sm:mb-6">
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Total Pedidos</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Total</p>
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
                 </div>
-                <div className="p-3 bg-blue-100 rounded-full">
-                  <Coffee className="h-5 w-5 text-blue-600" />
+                <div className="p-2 sm:p-3 bg-blue-100 rounded-full shrink-0">
+                  <Coffee className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Pendientes</p>
-                  <p className="text-2xl font-bold text-yellow-600">{stats.pendientes}</p>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Pendientes</p>
+                  <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pendientes}</p>
                 </div>
-                <div className="p-3 bg-yellow-100 rounded-full">
-                  <Clock className="h-5 w-5 text-yellow-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Preparando</p>
-                  <p className="text-2xl font-bold text-blue-600">{stats.preparando}</p>
-                </div>
-                <div className="p-3 bg-blue-100 rounded-full">
-                  <TrendingUp className="h-5 w-5 text-blue-600" />
+                <div className="p-2 sm:p-3 bg-yellow-100 rounded-full shrink-0">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Listos</p>
-                  <p className="text-2xl font-bold text-green-600">{stats.listos}</p>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Preparando</p>
+                  <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.preparando}</p>
                 </div>
-                <div className="p-3 bg-green-100 rounded-full">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
+                <div className="p-2 sm:p-3 bg-blue-100 rounded-full shrink-0">
+                  <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Listos</p>
+                  <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.listos}</p>
+                </div>
+                <div className="p-2 sm:p-3 bg-green-100 rounded-full shrink-0">
+                  <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                 </div>
               </div>
             </CardContent>
@@ -315,43 +302,43 @@ export default function BartenderDashboard() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between text-base sm:text-lg">
               <span>📋 Pedidos en la barra</span>
-              <Badge variant="secondary">
+              <Badge variant="secondary" className="text-xs">
                 {pedidos.length} total
               </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
             {pedidos.length === 0 ? (
-              <div className="text-center py-12">
-                <Coffee className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No hay pedidos en la barra</p>
-                <p className="text-sm text-gray-400">Los pedidos aparecerán aquí cuando los meseros los envíen</p>
+              <div className="text-center py-8 sm:py-12">
+                <Coffee className="h-10 w-10 sm:h-12 sm:w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">No hay pedidos en la barra</p>
+                <p className="text-xs text-gray-400">Aparecerán cuando los meseros los envíen</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {pedidos.map((pedido) => (
-                  <div key={pedido.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
+                  <div key={pedido.id} className="border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0 w-full sm:w-auto">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-lg">
+                          <span className="font-bold text-base sm:text-lg">
                             Mesa {pedido.mesa || 'N/A'}
                           </span>
-                          <Badge className={getStatusColor(pedido.estado)}>
+                          <Badge className={`${getStatusColor(pedido.estado)} text-xs`}>
                             {getStatusIcon(pedido.estado)}
                             <span className="ml-1">{pedido.estado.toUpperCase()}</span>
                           </Badge>
-                          <span className="text-sm text-gray-400">
+                          <span className="text-xs text-gray-400">
                             {new Date(pedido.created_at).toLocaleTimeString()}
                           </span>
                         </div>
                         
                         <div className="mt-2 space-y-1.5">
                           {pedido.items?.map((item: any, idx: number) => (
-                            <div key={idx} className="flex justify-between items-center text-sm text-gray-600 gap-2 bg-gray-50 rounded px-2 py-1">
+                            <div key={idx} className="flex justify-between items-center text-xs sm:text-sm text-gray-600 gap-2 bg-gray-50 rounded px-2 py-1">
                               <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <span className="truncate">{item.nombre}</span>
                                 <BotonReceta 
@@ -361,42 +348,42 @@ export default function BartenderDashboard() {
                                   size="sm"
                                 />
                               </div>
-                              <span className="font-medium flex-shrink-0">x{item.cantidad}</span>
+                              <span className="font-medium shrink-0">x{item.cantidad}</span>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div className="flex flex-col items-end gap-2">
-                        <span className="font-bold text-lg text-orange-600">
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <span className="font-bold text-base sm:text-lg text-orange-600">
                           ${pedido.total?.toFixed(2) || '0.00'}
                         </span>
-                        <div className="flex gap-2 flex-wrap">
+                        <div className="flex gap-1.5 flex-wrap justify-end">
                           {pedido.estado === 'pendiente' && (
                             <Button 
                               size="sm" 
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
                               onClick={() => actualizarEstado(pedido.id, 'preparando')}
                             >
-                              <Coffee className="h-3 w-3 mr-1" />
-                              Preparar
+                              <Coffee className="h-3 w-3 sm:mr-1" />
+                              <span className="hidden sm:inline">Preparar</span>
                             </Button>
                           )}
                           {pedido.estado === 'preparando' && (
                             <Button 
                               size="sm" 
-                              className="bg-green-600 hover:bg-green-700 text-white"
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs"
                               onClick={() => actualizarEstado(pedido.id, 'listo')}
                             >
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Marcar Listo
+                              <CheckCircle className="h-3 w-3 sm:mr-1" />
+                              <span className="hidden sm:inline">Listo</span>
                             </Button>
                           )}
                           {pedido.estado === 'listo' && (
                             <Button 
                               size="sm" 
                               variant="outline"
-                              className="text-gray-600"
+                              className="text-gray-600 text-xs"
                               onClick={() => actualizarEstado(pedido.id, 'servido')}
                             >
                               Servido
@@ -405,11 +392,10 @@ export default function BartenderDashboard() {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
                             onClick={() => actualizarEstado(pedido.id, 'cancelado')}
                           >
-                            <XCircle className="h-3 w-3 mr-1" />
-                            Cancelar
+                            <XCircle className="h-3 w-3" />
                           </Button>
                         </div>
                       </div>
@@ -423,16 +409,16 @@ export default function BartenderDashboard() {
       </main>
 
       <Dialog open={isMermaOpen} onOpenChange={setIsMermaOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md w-[95vw] sm:w-full">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
               <TrendingUp className="h-5 w-5 text-red-500" />
               Registrar Merma
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="producto">Producto</Label>
+              <Label htmlFor="producto" className="text-sm">Producto</Label>
               <Input
                 id="producto"
                 placeholder="Nombre del producto"
@@ -441,7 +427,7 @@ export default function BartenderDashboard() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="cantidad">Cantidad perdida</Label>
+              <Label htmlFor="cantidad" className="text-sm">Cantidad perdida</Label>
               <Input
                 id="cantidad"
                 type="number"
@@ -451,7 +437,7 @@ export default function BartenderDashboard() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="motivo">Motivo</Label>
+              <Label htmlFor="motivo" className="text-sm">Motivo</Label>
               <Input
                 id="motivo"
                 placeholder="Ej: Derrame, producto caducado, etc."

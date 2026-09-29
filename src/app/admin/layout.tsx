@@ -3,14 +3,26 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { UserProfile } from '@/components/layout/UserProfile'
 import { ToastContainer } from '@/components/ui/toast-container'
 import { EditProfileModal } from '@/components/admin/EditProfileModal'
 import { AdminNotificationBell } from '@/components/admin/AdminNotificationBell'
 import { JornadaButton } from '@/components/admin/jornada/JornadaButton'
+import { HeaderRol } from '@/components/layout/HeaderRol'
 import { Button } from '@/components/ui/button'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+
+const NAV_ITEMS = [
+  { label: 'Dashboard', href: '/admin' },
+  { label: 'Bartenders', href: '/admin/bartenders' },
+  { label: 'Meseros', href: '/admin/meseros' },
+  { label: 'Caja', href: '/admin/caja', highlight: true, color: 'emerald' as const },
+  { label: 'Cajas Físicas', href: '/admin/cajas' },
+  { label: 'Usuarios', href: '/admin/users' },
+  { label: 'Inventario', href: '/admin/inventory' },
+  { label: 'Recetas', href: '/admin/recipes' },
+  { label: 'Auditoría', href: '/admin/auditoria', highlight: true, color: 'purple' as const },
+]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth('admin')
@@ -65,34 +77,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <>
       <div className="min-h-screen bg-gray-50">
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-          <div className="px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center">
-                  <span className="text-xl font-bold text-gray-900">BARRANCO</span>
-                  <span className="ml-2 text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-1 rounded-full">Admin</span>
-                </div>
-                <nav className="hidden md:flex items-center gap-2 lg:gap-4 text-sm">
-                  <a href="/admin" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Dashboard</a>
-                  <a href="/admin/bartenders" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Bartenders</a>
-                  <a href="/admin/meseros" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Meseros</a>
-                  <a href="/admin/caja" className="text-emerald-600 hover:text-emerald-800 transition-colors px-2 py-1 rounded-md hover:bg-emerald-50 font-medium">Caja</a>
-                  <a href="/admin/cajas" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Cajas Físicas</a>
-                  <a href="/admin/users" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Usuarios</a>
-                  <a href="/admin/inventory" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Inventario</a>
-                  <a href="/admin/recipes" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Recetas</a>
-                  <a href="/admin/auditoria" className="text-purple-600 hover:text-purple-800 transition-colors px-2 py-1 rounded-md hover:bg-purple-50 font-medium">Auditoría</a>
-                </nav>
-              </div>
-              <div className="flex items-center gap-3">
-                <JornadaButton />
-                <AdminNotificationBell />
-                <UserProfile onLogout={handleLogout} onEditProfile={() => setIsProfileOpen(true)} />
-              </div>
-            </div>
-          </div>
-        </header>
+        <HeaderRol
+          rol="admin"
+          userName={`${user.nombre || ''} ${user.apellido || ''}`.trim()}
+          userEmail={user.email}
+          navItems={NAV_ITEMS}
+          onLogout={handleLogout}
+          onEditProfile={() => setIsProfileOpen(true)}
+        >
+          <JornadaButton />
+          <AdminNotificationBell />
+        </HeaderRol>
         <div className="relative">{children}</div>
       </div>
       <ToastContainer />

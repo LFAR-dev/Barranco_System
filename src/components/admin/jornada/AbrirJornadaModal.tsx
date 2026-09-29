@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { jornadaService } from '@/lib/services/jornadaService'
+import { emitirEventoJornada } from '@/lib/events/jornadaEvents'
 
 interface AbrirJornadaModalProps {
   isOpen: boolean
@@ -52,6 +53,9 @@ export function AbrirJornadaModal({ isOpen, onClose, onSuccess }: AbrirJornadaMo
     try {
       const result = await jornadaService.abrirJornada(nombre.trim(), notas.trim() || undefined)
       
+      // 🔔 Notificar a todos los componentes que escuchan
+      emitirEventoJornada('JORNADA_ABIERTA')
+      
       toast({
         title: '✅ Jornada abierta',
         description: `"${result.nombre}" está activa desde ahora`,
@@ -76,20 +80,20 @@ export function AbrirJornadaModal({ isOpen, onClose, onSuccess }: AbrirJornadaMo
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg w-[95vw] sm:w-full">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-emerald-700">
-            <Calendar className="h-5 w-5" />
+          <DialogTitle className="flex items-center gap-2 text-emerald-700 text-base sm:text-lg">
+            <Calendar className="h-5 w-5 shrink-0" />
             Abrir jornada del día
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">
             Se cerrará cualquier jornada activa anterior. Todos los pedidos y ventas nuevas pertenecerán a esta jornada.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-2">
-            <Label htmlFor="nombre" className="flex items-center gap-1.5">
+            <Label htmlFor="nombre" className="flex items-center gap-1.5 text-sm">
               <Calendar className="h-3.5 w-3.5 text-gray-500" />
               Nombre de la jornada
             </Label>
@@ -107,7 +111,7 @@ export function AbrirJornadaModal({ isOpen, onClose, onSuccess }: AbrirJornadaMo
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notas" className="flex items-center gap-1.5">
+            <Label htmlFor="notas" className="flex items-center gap-1.5 text-sm">
               <FileText className="h-3.5 w-3.5 text-gray-500" />
               Notas (opcional)
             </Label>
@@ -129,7 +133,7 @@ export function AbrirJornadaModal({ isOpen, onClose, onSuccess }: AbrirJornadaMo
             </p>
           </div>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2">
             <Button
               type="button"
               variant="outline"

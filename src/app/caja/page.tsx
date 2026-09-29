@@ -12,7 +12,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
 import { orderService, Order } from '@/lib/services/orderService'
@@ -20,6 +19,7 @@ import { CancelOrderModal } from '@/components/caja/CancelOrderModal'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
 import { EstadoSesionCaja } from '@/components/caja/EstadoSesionCaja'
+import { HeaderRol } from '@/components/layout/HeaderRol'
 
 export default function CajaDashboard() {
   const { user, loading: authLoading, logout } = useAuth()
@@ -180,129 +180,116 @@ export default function CajaDashboard() {
     <div className="min-h-screen bg-gray-50">
       <JornadaCerradaOverlay isOpen={!jornadaActiva && !jornadaLoading} />
 
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <span className="text-xl font-bold text-gray-900">BARRANCO</span>
-              <span className="ml-2 text-xs font-semibold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full">Caja</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="h-5 w-5" />
-                {stats.pendientes > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
-                    {stats.pendientes}
-                  </span>
-                )}
-              </Button>
-              <Avatar className="cursor-pointer">
-                <AvatarFallback className="bg-emerald-600 text-white">
-                  {user?.nombre?.charAt(0) || 'C'}
-                </AvatarFallback>
-              </Avatar>
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-gray-600 hover:text-gray-900">
-                <LogOut className="h-4 w-4 mr-1" />
-                Salir
-              </Button>
-            </div>
-          </div>
-        </div>
-            </header>
+      <HeaderRol
+        rol="caja"
+        userName={`${user?.nombre || ''} ${user?.apellido || ''}`.trim()}
+        userEmail={user?.email}
+        onLogout={handleLogout}
+      >
+        <Button variant="ghost" size="icon" className="relative">
+          <Bell className="h-5 w-5" />
+          {stats.pendientes > 0 && (
+            <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
+              {stats.pendientes}
+            </span>
+          )}
+        </Button>
+      </HeaderRol>
 
-      <div className="px-4 sm:px-6 lg:px-8 pt-6">
+      <div className="px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6">
         <EstadoSesionCaja onSesionChange={setSesionActiva} />
       </div>
 
-      <main className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+      <main className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
               ¡Hola, {user?.nombre || user?.email?.split('@')[0] || 'Cajero'}!
             </h1>
-            <p className="text-gray-500">Gestiona cobros y pedidos desde caja</p>
+            <p className="text-sm text-gray-500">Gestiona cobros y pedidos desde caja</p>
           </div>
           <Link href="/caja/pos">
-            <Button className="bg-emerald-600 hover:bg-emerald-700 h-11">
-              <Plus className="h-4 w-4 mr-2" />
-              Nuevo Pedido
+            <Button className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Nuevo Pedido</span>
+              <span className="sm:hidden">Nuevo</span>
             </Button>
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-4 sm:mb-6">
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Total Pedidos</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Total</p>
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
                 </div>
-                <div className="p-3 bg-blue-100 rounded-full">
-                  <ShoppingCart className="h-5 w-5 text-blue-600" />
+                <div className="p-2 sm:p-3 bg-blue-100 rounded-full shrink-0">
+                  <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Activos</p>
-                  <p className="text-2xl font-bold text-yellow-600">{stats.pendientes}</p>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Activos</p>
+                  <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pendientes}</p>
                 </div>
-                <div className="p-3 bg-yellow-100 rounded-full">
-                  <Clock className="h-5 w-5 text-yellow-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Cobrados</p>
-                  <p className="text-2xl font-bold text-green-600">{stats.cobrados}</p>
-                </div>
-                <div className="p-3 bg-green-100 rounded-full">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
+                <div className="p-2 sm:p-3 bg-yellow-100 rounded-full shrink-0">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Ingresos</p>
-                  <p className="text-2xl font-bold text-emerald-600">
-                    ${stats.totalIngresos.toFixed(2)}
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Cobrados</p>
+                  <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.cobrados}</p>
+                </div>
+                <div className="p-2 sm:p-3 bg-green-100 rounded-full shrink-0">
+                  <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">Ingresos</p>
+                  <p className="text-base sm:text-2xl font-bold text-emerald-600 truncate">
+                    ${stats.totalIngresos.toFixed(0)}
                   </p>
                 </div>
-                <div className="p-3 bg-emerald-100 rounded-full">
-                  <Wallet className="h-5 w-5 text-emerald-600" />
+                <div className="p-2 sm:p-3 bg-emerald-100 rounded-full shrink-0">
+                  <Wallet className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600" />
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           <div className="lg:col-span-2">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between text-base sm:text-lg">
                   <span>📋 Pedidos Activos</span>
-                  <Badge variant="secondary">
-                    {pedidosActivos.length} {pedidosActivos.length === 1 ? 'pedido' : 'pedidos'}
+                  <Badge variant="secondary" className="text-xs">
+                    {pedidosActivos.length}
                   </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {pedidosActivos.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <CheckCircle className="h-16 w-16 mx-auto mb-3 text-gray-300" />
-                    <p className="font-medium text-lg">No hay pedidos activos</p>
+                  <div className="text-center py-8 sm:py-12 text-gray-500">
+                    <CheckCircle className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-3 text-gray-300" />
+                    <p className="font-medium text-base sm:text-lg">No hay pedidos activos</p>
                     <p className="text-sm mt-1">Todos los pedidos han sido cobrados</p>
                     <Link href="/caja/pos">
                       <Button className="mt-4 bg-emerald-600 hover:bg-emerald-700">
@@ -316,27 +303,27 @@ export default function CajaDashboard() {
                     {pedidosActivos.map((pedido) => (
                       <div 
                         key={pedido.id} 
-                        className="border-2 rounded-lg p-4 hover:shadow-md transition-shadow bg-white"
+                        className="border-2 rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow bg-white"
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                          <div>
+                        <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-lg">
+                              <span className="font-bold text-base sm:text-lg">
                                 {pedido.mesa || 'Caja'}
                               </span>
-                              <Badge className={getStatusColor(pedido.estado)}>
+                              <Badge className={`${getStatusColor(pedido.estado)} text-xs`}>
                                 {pedido.estado.toUpperCase()}
                               </Badge>
                               <span className="text-xs text-gray-400">
                                 #{pedido.id.slice(0, 6)}
                               </span>
                             </div>
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1">
                               {pedido.items?.length || 0} {pedido.items?.length === 1 ? 'producto' : 'productos'} • 
                               {' '}{new Date(pedido.created_at).toLocaleTimeString()}
                             </p>
                           </div>
-                          <span className="font-bold text-xl text-emerald-600">
+                          <span className="font-bold text-base sm:text-xl text-emerald-600 shrink-0">
                             ${pedido.total?.toFixed(2) || '0.00'}
                           </span>
                         </div>
@@ -360,7 +347,7 @@ export default function CajaDashboard() {
                               onClick={() => handleCobrarPedido(pedido.id, pedido.mesa)}
                             >
                               <CreditCard className="h-3 w-3 mr-1" />
-                              Cobrar Pedido
+                              Cobrar
                             </Button>
                           )}
                           {pedido.estado !== 'listo' && (
@@ -377,7 +364,7 @@ export default function CajaDashboard() {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50 flex-1 min-w-[120px]"
+                            className="text-red-600 border-red-200 hover:bg-red-50 flex-1 min-w-[100px]"
                             onClick={() => handleOpenCancelModal(pedido)}
                           >
                             <XCircle className="h-3 w-3 mr-1" />
@@ -392,28 +379,28 @@ export default function CajaDashboard() {
             </Card>
           </div>
 
-          <div>
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle>💰 Resumen de Caja</CardTitle>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base sm:text-lg">💰 Resumen de Caja</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between border-b pb-2">
-                    <span className="text-sm text-gray-500">Total Ventas</span>
-                    <span className="font-bold">${stats.totalIngresos.toFixed(2)}</span>
+                    <span className="text-xs sm:text-sm text-gray-500">Total Ventas</span>
+                    <span className="font-bold text-sm">${stats.totalIngresos.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between border-b pb-2">
-                    <span className="text-sm text-gray-500">Pedidos Cobrados</span>
-                    <span className="font-bold">{stats.cobrados}</span>
+                    <span className="text-xs sm:text-sm text-gray-500">Pedidos Cobrados</span>
+                    <span className="font-bold text-sm">{stats.cobrados}</span>
                   </div>
                   <div className="flex items-center justify-between border-b pb-2">
-                    <span className="text-sm text-gray-500">Pedidos Activos</span>
-                    <span className="font-bold text-yellow-600">{stats.pendientes}</span>
+                    <span className="text-xs sm:text-sm text-gray-500">Pedidos Activos</span>
+                    <span className="font-bold text-sm text-yellow-600">{stats.pendientes}</span>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t-2">
-                    <span className="font-semibold">Total en Caja</span>
-                    <span className="text-xl font-bold text-emerald-600">
+                    <span className="font-semibold text-sm">Total en Caja</span>
+                    <span className="text-lg sm:text-xl font-bold text-emerald-600">
                       ${stats.totalIngresos.toFixed(2)}
                     </span>
                   </div>
@@ -422,13 +409,13 @@ export default function CajaDashboard() {
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <AlertTriangle className="h-4 w-4 text-amber-500" />
                   Información
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-gray-600 space-y-2">
+              <CardContent className="text-xs sm:text-sm text-gray-600 space-y-2">
                 <p>• Los pedidos <strong>listos</strong> se pueden cobrar</p>
                 <p>• Al cancelar, se notifica al administrador</p>
                 <p>• El motivo de cancelación es obligatorio</p>

@@ -5,6 +5,7 @@ import { Calendar, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-rea
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { jornadaService, Jornada } from '@/lib/services/jornadaService'
+import { escucharEventosJornada } from '@/lib/events/jornadaEvents'
 
 interface JornadaBannerProps {
   onJornadaChange?: (jornada: Jornada | null) => void
@@ -20,7 +21,11 @@ export function JornadaBanner({ onJornadaChange, showCerrar, onCerrarClick }: Jo
   useEffect(() => {
     cargarJornada()
     const interval = setInterval(cargarJornada, 60000)
-    return () => clearInterval(interval)
+    const cleanup = escucharEventosJornada(cargarJornada)
+    return () => {
+      clearInterval(interval)
+      cleanup()
+    }
   }, [])
 
   useEffect(() => {
@@ -55,8 +60,8 @@ export function JornadaBanner({ onJornadaChange, showCerrar, onCerrarClick }: Jo
   if (loading) {
     return (
       <Card className="border-l-4 border-l-gray-300 bg-gray-50">
-        <CardContent className="p-4 flex items-center gap-3">
-          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+        <CardContent className="p-3 sm:p-4 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin text-gray-400 shrink-0" />
           <span className="text-sm text-gray-500">Verificando jornada...</span>
         </CardContent>
       </Card>
@@ -66,19 +71,21 @@ export function JornadaBanner({ onJornadaChange, showCerrar, onCerrarClick }: Jo
   if (!jornada) {
     return (
       <Card className="border-l-4 border-l-amber-500 bg-amber-50">
-        <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-100 rounded-lg">
+        <CardContent className="p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="p-2 bg-amber-100 rounded-lg shrink-0">
               <AlertTriangle className="h-5 w-5 text-amber-600" />
             </div>
-            <div>
-              <p className="font-semibold text-amber-900">No hay jornada activa</p>
+            <div className="min-w-0">
+              <p className="font-semibold text-amber-900 text-sm sm:text-base">
+                No hay jornada activa
+              </p>
               <p className="text-xs text-amber-700">
-                Los pedidos y cobros no funcionarán hasta que abras la jornada del día
+                Los pedidos y cobros no funcionarán hasta que abras la jornada
               </p>
             </div>
           </div>
-          <Badge className="bg-amber-100 text-amber-800 border border-amber-300">
+          <Badge className="bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
             <Clock className="h-3 w-3 mr-1" />
             Cerrada
           </Badge>
@@ -89,17 +96,17 @@ export function JornadaBanner({ onJornadaChange, showCerrar, onCerrarClick }: Jo
 
   return (
     <Card className="border-l-4 border-l-emerald-500 bg-emerald-50">
-      <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+      <CardContent className="p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="p-2 bg-emerald-100 rounded-lg flex-shrink-0">
+          <div className="p-2 bg-emerald-100 rounded-lg shrink-0">
             <CheckCircle className="h-5 w-5 text-emerald-600" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-semibold text-emerald-900 truncate">
+              <p className="font-semibold text-emerald-900 truncate text-sm sm:text-base">
                 {jornada.nombre}
               </p>
-              <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs">
+              <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs shrink-0">
                 Activa
               </Badge>
             </div>
@@ -123,7 +130,7 @@ export function JornadaBanner({ onJornadaChange, showCerrar, onCerrarClick }: Jo
         {showCerrar && (
           <button
             onClick={onCerrarClick}
-            className="text-xs font-medium text-red-600 hover:text-red-800 bg-white hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+            className="text-xs font-medium text-red-600 hover:text-red-800 bg-white hover:bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
           >
             Cerrar jornada
           </button>
