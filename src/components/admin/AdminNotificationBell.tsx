@@ -66,7 +66,12 @@ export function AdminNotificationBell() {
 
   const fetchNotifications = async () => {
     try {
-      const data = await orderService.getNotificacionesAdmin()
+      const { data, error } = await supabase
+        .from('notificaciones_admin')
+        .select('*, pedido:pedidos(*)')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
       setNotifications(data || [])
       setUnreadCount((data || []).filter((n: any) => !n.leida).length)
     } catch (error) {
@@ -78,7 +83,12 @@ export function AdminNotificationBell() {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      await orderService.marcarNotificacionLeida(notificationId)
+      const { error } = await supabase
+        .from('notificaciones_admin')
+        .update({ leida: true })
+        .eq('id', notificationId)
+
+      if (error) throw error
       setNotifications(prev => 
         prev.map(n => n.id === notificationId ? { ...n, leida: true } : n)
       )

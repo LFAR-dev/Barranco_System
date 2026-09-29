@@ -266,7 +266,7 @@ export const orderService = {
     if (pedidoActual.estado === 'servido') throw new Error('Este pedido ya fue cobrado')
 
     // 1. Restaurar stock si el pedido estaba servido o en proceso
-    if (pedidoActual.estado === 'listo' || pedidoActual.estado === 'servido') {
+    if (pedidoActual.estado === 'listo') {
       try {
         await supabase.rpc('restaurar_stock_cancelacion', {
           p_pedido_id: orderId,
