@@ -1,157 +1,256 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import {
-  Search,
-  ArrowLeft,
-  RefreshCw,
-  DollarSign,
-  Calendar,
-  TrendingUp,
-  TrendingDown,
-  Users,
-  Filter,
-  Clock,
-  Download
+  Search, ArrowLeft, RefreshCw, DollarSign, Calendar,
+  TrendingUp, Users, Filter, Clock, Download, Eye,
+  CreditCard, Wallet, TrendingDown, X
 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/hooks/use-toast'
+import { ventaService, Venta, VentaStats } from '@/lib/services/ventaService'
+import { DetalleVentaModal } from '@/components/admin/DetalleVentaModal'
 
-const Select = ({ value, onValueChange, children }: any) => (
-  <div className="w-40">
-    <select
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-      className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-    >
-      {children}
-    </select>
-  </div>
-)
-
-const SelectTrigger = ({ children }: any) => <>{children}</>
-const SelectValue = ({ placeholder }: any) => (
-  <option value="" disabled>{placeholder}</option>
-)
-const SelectContent = ({ children }: any) => <>{children}</>
-const SelectItem = ({ value, children }: any) => (
-  <option value={value}>{children}</option>
-)
-
-interface Sale {
-  id: string
-  fecha_hora: string
-  total: number
-  total_pagado: number
-  propina: number
-  metodo_pago: string
-  estado: string
-  receta_nombre: string
-  bartender_nombre: string
-  mesero_nombre: string
-  sucursal_nombre: string
-}
+type Periodo = 'hoy' | 'ayer' | 'semana' | 'mes' | 'jornada' | 'custom'
 
 export default function SalesPage() {
-  const supabase = createClient()
-  const [sales, setSales] = useState<Sale[]>([])
+  const { toast } = useToast()
+  const [ventas, setVentas] = useState<Venta[]>([])
+  const [stats, setStats] = useState<VentaStats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [period, setPeriod] = useState('hoy')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [filtros, setFiltros] = useState<{
+    periodo: Periodo
+    fechaInicio: string
+    fechaFin: string
+    metodoPago: string
+    meseroId: string
+    cajeroId: string
+    jornadaId: string
+    searchTerm: string
+  }>({
+    periodo: 'hoy',
+    fechaInicio: '',
+    fechaFin: '',
+    metodoPago: '',
+    meseroId: '',
+    cajeroId: '',
+    jornadaId: '',
+    searchTerm: ''
+  })
+  const [opciones, setOpciones] = useState<{
+    meseros: Array<{ id: string; nombre: string }>
+    cajeros: Array<{ id: string; nombre: string }>
+    bartenders: Array<{ id: string; nombre: string }>
+    jornadas: Array<{ id: string; nombre: string; fecha: string }>
+  }>({ meseros: [], cajeros: [], bartenders: [], jornadas: [] })
+  const [ventaSeleccionada, setVentaSeleccionada] = useState<Venta | null>(null)
+  const [isDetalleOpen, setIsDetalleOpen] = useState(false)
 
+  // ============================================================
+  // Cargar opciones de filtros al montar
+  // ============================================================
   useEffect(() => {
-    fetchSales()
-  }, [period])
+    cargarOpciones()
+  }, [])
 
-  const fetchSales = async () => {
+  // ============================================================
+  // Cargar ventas cuando cambian los filtros
+  // ============================================================
+  useEffect(() => {
+    cargarVentas()
+  }, [filtros])
+
+  const cargarOpciones = async () => {
+    try {
+      const data = await ventaService.getFiltrosDisponibles()
+      setOpciones(data)
+    } catch (error) {
+      console.error('Error al cargar opciones:', error)
+    }
+  }
+
+  const calcularRangoFechas = (): { inicio: string; fin: string } => {
+    const hoy = new Date()
+    hoy.setHours(0, 0, 0, 0)
+
+    const fin = new Date()
+    fin.setHours(23, 59, 59, 999)
+
+    switch (filtros.periodo) {
+      case 'hoy':
+        return {
+          inicio: hoy.toISOString(),
+          fin: fin.toISOString()
+        }
+      case 'ayer': {
+        const ayer = new Date(hoy)
+        ayer.setDate(ayer.getDate() - 1)
+        const ayerFin = new Date(ayer)
+        ayerFin.setHours(23, 59, 59, 999)
+        return {
+          inicio: ayer.toISOString(),
+          fin: ayerFin.toISOString()
+        }
+      }
+      case 'semana': {
+        const semana = new Date(hoy)
+        semana.setDate(semana.getDate() - 7)
+        return {
+          inicio: semana.toISOString(),
+          fin: fin.toISOString()
+        }
+      }
+      case 'mes': {
+        const mes = new Date(hoy)
+        mes.setDate(mes.getDate() - 30)
+        return {
+          inicio: mes.toISOString(),
+          fin: fin.toISOString()
+        }
+      }
+      case 'custom':
+        return {
+          inicio: filtros.fechaInicio ? new Date(filtros.fechaInicio).toISOString() : '',
+          fin: filtros.fechaFin ? new Date(filtros.fechaFin + 'T23:59:59').toISOString() : ''
+        }
+      default:
+        return { inicio: '', fin: '' }
+    }
+  }
+
+  const cargarVentas = async () => {
     setLoading(true)
     try {
-      let query = supabase
-        .from('ventas')
-        .select(`
-          *,
-          recetas (nombre),
-          bartenders (nombre_completo),
-          usuarios!mesero_id (nombre, apellido),
-          sucursales (nombre)
-        `)
-        .order('fecha_hora', { ascending: false })
-
-      // Filtros de período
-      const now = new Date()
-      let start = new Date()
-      if (period === 'hoy') {
-        start.setHours(0,0,0,0)
-        query = query.gte('fecha_hora', start.toISOString())
-      } else if (period === 'semana') {
-        const day = now.getDay()
-        const diff = now.getDate() - day + (day === 0 ? -6 : 1)
-        start = new Date(now.getFullYear(), now.getMonth(), diff)
-        start.setHours(0,0,0,0)
-        query = query.gte('fecha_hora', start.toISOString())
-      } else if (period === 'mes') {
-        start = new Date(now.getFullYear(), now.getMonth(), 1)
-        start.setHours(0,0,0,0)
-        query = query.gte('fecha_hora', start.toISOString())
-      } else if (period === 'personalizado' && startDate && endDate) {
-        query = query.gte('fecha_hora', new Date(startDate).toISOString())
-          .lte('fecha_hora', new Date(endDate + 'T23:59:59').toISOString())
+      const rango = filtros.periodo === 'jornada' ? { inicio: '', fin: '' } : calcularRangoFechas()
+      
+      const filtrosAplicados: any = {
+        fechaInicio: rango.inicio,
+        fechaFin: rango.fin,
+        metodoPago: filtros.metodoPago || undefined,
+        meseroId: filtros.meseroId || undefined,
+        cajeroId: filtros.cajeroId || undefined,
+        jornadaId: filtros.periodo === 'jornada' ? filtros.jornadaId : undefined,
+        searchTerm: filtros.searchTerm || undefined
       }
 
-      const { data, error } = await query
-      if (error) throw error
+      const [ventasData, statsData] = await Promise.all([
+        ventaService.getVentas(filtrosAplicados),
+        ventaService.getStats(filtrosAplicados)
+      ])
 
-      const formattedData = data?.map((item: any) => ({
-        ...item,
-        receta_nombre: item.recetas?.nombre || 'Sin receta',
-        bartender_nombre: item.bartenders?.nombre_completo || 'Sin bartender',
-        mesero_nombre: item.usuarios ? `${item.usuarios.nombre} ${item.usuarios.apellido}` : 'Sin mesero',
-        sucursal_nombre: item.sucursales?.nombre || 'Sin sucursal',
-        // Asegurar valores numéricos
-        total: Number(item.total) || 0,
-        total_pagado: Number(item.total_pagado) || 0,
-        propina: Number(item.propina) || 0,
-      })) || []
-
-      setSales(formattedData)
-    } catch (error) {
-      console.error('Error fetching sales:', error)
+      setVentas(ventasData)
+      setStats(statsData)
+    } catch (error: any) {
+      console.error('Error al cargar ventas:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'No se pudieron cargar las ventas',
+        variant: 'destructive'
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredSales = sales.filter(sale =>
-    sale.receta_nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sale.bartender_nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sale.mesero_nombre?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const exportarCSV = () => {
+    if (ventas.length === 0) {
+      toast({
+        title: 'Sin datos',
+        description: 'No hay ventas para exportar',
+        variant: 'destructive'
+      })
+      return
+    }
 
-  // Cálculos
-  const totalVentas = sales.reduce((sum, s) => sum + s.total, 0)
-  const totalPagado = sales.reduce((sum, s) => sum + (s.total_pagado || 0), 0)
-  const totalPropina = sales.reduce((sum, s) => sum + (s.propina || 0), 0)
-  const promedio = sales.length ? totalVentas / sales.length : 0
-  const ventasConPropina = sales.filter(s => s.propina > 0).length
-  const propinaPromedio = ventasConPropina ? totalPropina / ventasConPropina : 0
+    const headers = ['ID', 'Fecha', 'Total', 'Propina', 'Método Pago', 'Estado', 'Mesero', 'Cajero']
+    const rows = ventas.map(v => [
+      v.id.slice(0, 8),
+      new Date(v.created_at).toLocaleString('es-MX'),
+      v.total?.toFixed(2) || '0.00',
+      v.propina?.toFixed(2) || '0.00',
+      v.metodo_pago || 'N/A',
+      v.estado || 'N/A',
+      v.mesero ? `${v.mesero.nombre} ${v.mesero.apellido}` : 'N/A',
+      v.cajero ? `${v.cajero.nombre} ${v.cajero.apellido}` : 'N/A'
+    ])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    )
+    const csv = [
+      headers.join(','),
+      ...rows.map(r => r.map(c => `"${c}"`).join(','))
+    ].join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `ventas_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
+
+    toast({
+      title: '✅ Exportado',
+      description: `${ventas.length} ventas exportadas a CSV`,
+      variant: 'success'
+    })
   }
+
+  const limpiarFiltros = () => {
+    setFiltros({
+      periodo: 'hoy',
+      fechaInicio: '',
+      fechaFin: '',
+      metodoPago: '',
+      meseroId: '',
+      cajeroId: '',
+      jornadaId: '',
+      searchTerm: ''
+    })
+  }
+
+  const handleVerDetalle = (venta: Venta) => {
+    setVentaSeleccionada(venta)
+    setIsDetalleOpen(true)
+  }
+
+  const getEstadoBadge = (estado: string) => {
+    switch (estado) {
+      case 'completada':
+      case 'servido':
+        return 'bg-emerald-100 text-emerald-700'
+      case 'cancelada':
+        return 'bg-red-100 text-red-700'
+      case 'pendiente':
+        return 'bg-yellow-100 text-yellow-700'
+      default:
+        return 'bg-gray-100 text-gray-700'
+    }
+  }
+
+  const getMetodoPagoIcon = (metodo: string) => {
+    switch (metodo) {
+      case 'efectivo': return <DollarSign className="h-3 w-3" />
+      case 'tarjeta': return <CreditCard className="h-3 w-3" />
+      default: return <Wallet className="h-3 w-3" />
+    }
+  }
+
+  const filtrosActivos = useMemo(() => {
+    return (
+      filtros.periodo !== 'hoy' ||
+      filtros.metodoPago ||
+      filtros.meseroId ||
+      filtros.cajeroId ||
+      filtros.jornadaId ||
+      filtros.searchTerm
+    )
+  }, [filtros])
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="px-4 sm:px-6 lg:px-8 py-6">
+        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
             <Link href="/admin">
@@ -161,193 +260,370 @@ export default function SalesPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Ventas</h1>
-              <p className="text-sm text-gray-500">Historial y análisis de ventas</p>
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <DollarSign className="h-6 w-6 text-emerald-600" />
+                Historial de Ventas
+              </h1>
+              <p className="text-sm text-gray-500">
+                Consulta todas las ventas con trazabilidad completa
+              </p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={fetchSales}>
+            <Button variant="outline" onClick={cargarVentas}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Actualizar
             </Button>
-            <Button variant="outline">
+            <Button
+              variant="outline"
+              onClick={exportarCSV}
+              className="text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+            >
               <Download className="h-4 w-4 mr-2" />
-              Exportar
+              Exportar CSV
             </Button>
           </div>
         </div>
 
-        {/* Filtros */}
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="hoy">Hoy</SelectItem>
-              <SelectItem value="semana">Esta semana</SelectItem>
-              <SelectItem value="mes">Este mes</SelectItem>
-              <SelectItem value="personalizado">Personalizado</SelectItem>
-            </SelectContent>
-          </Select>
-          {period === 'personalizado' && (
-            <div className="flex items-center gap-2">
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-36" />
-              <span>a</span>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-36" />
-              <Button variant="outline" size="sm" onClick={fetchSales}>Aplicar</Button>
-            </div>
-          )}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Buscar por receta, bartender, mesero..."
-              className="pl-9"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        {/* Stats */}
+        {stats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <DollarSign className="h-4 w-4 text-emerald-600" />
+                  <p className="text-xs text-gray-500">Ventas</p>
+                </div>
+                <p className="text-xl font-bold text-gray-900">
+                  ${stats.totalVentas.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <TrendingUp className="h-4 w-4 text-blue-600" />
+                  <p className="text-xs text-gray-500">Propinas</p>
+                </div>
+                <p className="text-xl font-bold text-blue-600">
+                  ${stats.totalPropinas.toFixed(2)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <TrendingUp className="h-4 w-4 text-purple-600" />
+                  <p className="text-xs text-gray-500">Ticket prom.</p>
+                </div>
+                <p className="text-xl font-bold text-purple-600">
+                  ${stats.ticketPromedio.toFixed(2)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <DollarSign className="h-4 w-4 text-gray-600" />
+                  <p className="text-xs text-gray-500">Efectivo</p>
+                </div>
+                <p className="text-xl font-bold text-gray-900">
+                  ${stats.efectivo.toFixed(0)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <CreditCard className="h-4 w-4 text-gray-600" />
+                  <p className="text-xs text-gray-500">Tarjeta</p>
+                </div>
+                <p className="text-xl font-bold text-gray-900">
+                  ${stats.tarjeta.toFixed(0)}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <TrendingDown className="h-4 w-4 text-red-600" />
+                  <p className="text-xs text-gray-500">Canceladas</p>
+                </div>
+                <p className="text-xl font-bold text-red-600">
+                  {stats.canceladas}
+                </p>
+              </CardContent>
+            </Card>
           </div>
-        </div>
+        )}
 
-        {/* Tarjetas de resumen con propina */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Total Cuenta</p>
-                  <p className="text-2xl font-bold text-gray-900">${totalVentas.toFixed(2)}</p>
-                  <p className="text-xs text-gray-400">{sales.length} ventas</p>
-                </div>
-                <div className="p-3 bg-blue-100 rounded-xl">
-                  <DollarSign className="h-6 w-6 text-blue-600" />
-                </div>
+        {/* Filtros */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              Filtros
+              {filtrosActivos && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={limpiarFiltros}
+                  className="ml-auto text-xs text-red-600 hover:text-red-800 h-auto p-1"
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Limpiar filtros
+                </Button>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              {/* Período */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Período</label>
+                <select
+                  value={filtros.periodo}
+                  onChange={(e) => setFiltros({ ...filtros, periodo: e.target.value as Periodo })}
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="hoy">Hoy</option>
+                  <option value="ayer">Ayer</option>
+                  <option value="semana">Últimos 7 días</option>
+                  <option value="mes">Últimos 30 días</option>
+                  <option value="jornada">Por jornada</option>
+                  <option value="custom">Rango custom</option>
+                </select>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Total Pagado</p>
-                  <p className="text-2xl font-bold text-green-600">${totalPagado.toFixed(2)}</p>
-                  <p className="text-xs text-gray-400">Lo que dejaron los clientes</p>
-                </div>
-                <div className="p-3 bg-green-100 rounded-xl">
-                  <TrendingUp className="h-6 w-6 text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Propina Total</p>
-                  <p className="text-2xl font-bold text-purple-600">${totalPropina.toFixed(2)}</p>
-                  <p className="text-xs text-gray-400">
-                    {ventasConPropina > 0 
-                      ? `${ventasConPropina} ventas con propina (prom. $${propinaPromedio.toFixed(2)})` 
-                      : 'Sin propinas registradas'}
-                  </p>
-                </div>
-                <div className="p-3 bg-purple-100 rounded-xl">
-                  <Users className="h-6 w-6 text-purple-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Promedio por Venta</p>
-                  <p className="text-2xl font-bold text-gray-900">${promedio.toFixed(2)}</p>
-                  <p className="text-xs text-gray-400">Ticket promedio</p>
-                </div>
-                <div className="p-3 bg-yellow-100 rounded-xl">
-                  <Clock className="h-6 w-6 text-yellow-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Tabla con todas las columnas */}
+              {/* Jornada (si periodo = jornada) */}
+              {filtros.periodo === 'jornada' && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Jornada</label>
+                  <select
+                    value={filtros.jornadaId}
+                    onChange={(e) => setFiltros({ ...filtros, jornadaId: e.target.value })}
+                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="">Todas</option>
+                    {opciones.jornadas.map(j => (
+                      <option key={j.id} value={j.id}>
+                        {j.nombre} ({new Date(j.fecha).toLocaleDateString('es-MX')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Rango custom */}
+              {filtros.periodo === 'custom' && (
+                <>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Desde</label>
+                    <Input
+                      type="date"
+                      value={filtros.fechaInicio}
+                      onChange={(e) => setFiltros({ ...filtros, fechaInicio: e.target.value })}
+                      className="text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Hasta</label>
+                    <Input
+                      type="date"
+                      value={filtros.fechaFin}
+                      onChange={(e) => setFiltros({ ...filtros, fechaFin: e.target.value })}
+                      className="text-sm"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Método de pago */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Método de pago</label>
+                <select
+                  value={filtros.metodoPago}
+                  onChange={(e) => setFiltros({ ...filtros, metodoPago: e.target.value })}
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Todos</option>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="tarjeta">Tarjeta</option>
+                  <option value="transferencia">Transferencia</option>
+                </select>
+              </div>
+
+              {/* Mesero */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Mesero</label>
+                <select
+                  value={filtros.meseroId}
+                  onChange={(e) => setFiltros({ ...filtros, meseroId: e.target.value })}
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Todos</option>
+                  {opciones.meseros.map(m => (
+                    <option key={m.id} value={m.id}>{m.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Cajero */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Cajero</label>
+                <select
+                  value={filtros.cajeroId}
+                  onChange={(e) => setFiltros({ ...filtros, cajeroId: e.target.value })}
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Todos</option>
+                  {opciones.cajeros.map(c => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Búsqueda */}
+              <div className="col-span-2 md:col-span-3 lg:col-span-2">
+                <label className="text-xs text-gray-500 mb-1 block">Buscar</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Folio, mesero, cajero..."
+                    className="pl-9 text-sm"
+                    value={filtros.searchTerm}
+                    onChange={(e) => setFiltros({ ...filtros, searchTerm: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tabla */}
         <Card>
-          <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Receta</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Bartender</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Mesero</th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Método</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Cuenta</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Pagado</th>
-                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase">Propina</th>
-                  <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase">Estado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredSales.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="text-center py-8 text-gray-500">
-                      No se encontraron ventas
-                    </td>
-                  </tr>
-                ) : (
-                  filteredSales.map((sale) => (
-                    <tr key={sale.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4 text-sm text-gray-600 whitespace-nowrap">
-                        {new Date(sale.fecha_hora).toLocaleDateString('es-MX', {
-                          day: '2-digit',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </td>
-                      <td className="py-3 px-4 text-sm font-medium text-gray-900">
-                        {sale.receta_nombre}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {sale.bartender_nombre}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {sale.mesero_nombre}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {sale.metodo_pago || 'Efectivo'}
-                      </td>
-                      <td className="py-3 px-4 text-sm font-bold text-gray-900 text-right">
-                        ${sale.total.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-900 text-right">
-                        ${sale.total_pagado.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {sale.propina > 0 ? (
-                          <span className="text-sm font-medium text-green-600">
-                            ${sale.propina.toFixed(2)}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">Sin propina</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <Badge className={sale.estado === 'completada' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
-                          {sale.estado || 'Completada'}
-                        </Badge>
-                      </td>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between text-base">
+              <span>Ventas ({ventas.length})</span>
+              {loading && <RefreshCw className="h-4 w-4 animate-spin text-gray-400" />}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading && ventas.length === 0 ? (
+              <div className="text-center py-12">
+                <RefreshCw className="h-8 w-8 text-gray-300 mx-auto mb-2 animate-spin" />
+                <p className="text-gray-500">Cargando ventas...</p>
+              </div>
+            ) : ventas.length === 0 ? (
+              <div className="text-center py-12">
+                <DollarSign className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 font-medium">No hay ventas en este período</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  {filtrosActivos ? 'Intenta cambiar los filtros' : 'Las ventas aparecerán aquí'}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Folio</th>
+                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Fecha</th>
+                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Mesero</th>
+                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Cajero</th>
+                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Método</th>
+                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-500">Propina</th>
+                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-500">Total</th>
+                      <th className="text-center py-2 px-2 text-xs font-medium text-gray-500">Estado</th>
+                      <th className="text-center py-2 px-2 text-xs font-medium text-gray-500"></th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {ventas.map((venta) => (
+                      <tr
+                        key={venta.id}
+                        className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="py-2 px-2">
+                          <span className="font-mono text-xs text-gray-600">
+                            #{venta.id.slice(0, 6)}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2 text-gray-700">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-gray-400" />
+                            <span className="text-xs">
+                              {new Date(venta.created_at).toLocaleString('es-MX', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2 px-2 text-gray-700 text-xs">
+                          {venta.mesero
+                            ? `${venta.mesero.nombre} ${venta.mesero.apellido}`
+                            : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="py-2 px-2 text-gray-700 text-xs">
+                          {venta.cajero
+                            ? `${venta.cajero.nombre} ${venta.cajero.apellido}`
+                            : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="py-2 px-2">
+                          <Badge className="bg-gray-100 text-gray-700 text-xs flex items-center gap-1 w-fit">
+                            {getMetodoPagoIcon(venta.metodo_pago || '')}
+                            {venta.metodo_pago || 'N/A'}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2 text-right text-xs text-blue-600 font-medium">
+                          ${(venta.propina || 0).toFixed(2)}
+                        </td>
+                        <td className="py-2 px-2 text-right font-semibold text-emerald-600">
+                          ${(venta.total || 0).toFixed(2)}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <Badge className={`text-xs ${getEstadoBadge(venta.estado)}`}>
+                            {venta.estado || 'N/A'}
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50"
+                            onClick={() => handleVerDetalle(venta)}
+                            title="Ver detalle"
+                          >
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Modal de detalle */}
+      <DetalleVentaModal
+        venta={ventaSeleccionada}
+        isOpen={isDetalleOpen}
+        onClose={() => {
+          setIsDetalleOpen(false)
+          setVentaSeleccionada(null)
+        }}
+      />
     </div>
   )
 }
