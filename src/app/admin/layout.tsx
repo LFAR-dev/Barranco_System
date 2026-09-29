@@ -7,6 +7,7 @@ import { UserProfile } from '@/components/layout/UserProfile'
 import { ToastContainer } from '@/components/ui/toast-container'
 import { EditProfileModal } from '@/components/admin/EditProfileModal'
 import { AdminNotificationBell } from '@/components/admin/AdminNotificationBell'
+import { JornadaButton } from '@/components/admin/jornada/JornadaButton'
 import { Button } from '@/components/ui/button'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
@@ -84,6 +85,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </nav>
               </div>
               <div className="flex items-center gap-3">
+                <JornadaButton />
                 <AdminNotificationBell />
                 <UserProfile onLogout={handleLogout} onEditProfile={() => setIsProfileOpen(true)} />
               </div>

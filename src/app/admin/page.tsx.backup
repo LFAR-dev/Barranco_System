@@ -1,4 +1,5 @@
 'use client'
+
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
@@ -14,8 +15,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { RendimientoChart } from '@/components/admin/RendimientoChart'
 import { RendimientoDona } from '@/components/admin/RendimientoDona'
-import { JornadaBanner } from '@/components/admin/jornada/JornadaBanner'
-import { AbrirJornadaModal } from '@/components/admin/jornada/AbrirJornadaModal'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -51,9 +50,6 @@ const alerts = [
 ]
 
 export default function AdminDashboardPage() {
-  const [jornadaActiva, setJornadaActiva] = useState<any>(null)
-const [mostrarModalJornada, setMostrarModalJornada] = useState(false)
-const [modalMostrado, setModalMostrado] = useState(false)
   const { user } = useAuth()
   const { greeting, timeIcon } = useGreeting()
   const [stats, setStats] = useState({ 
