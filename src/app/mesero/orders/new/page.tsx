@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast'
 import { createClient } from '@/lib/supabase/client'
 import { recipeService, Recipe } from '@/lib/services/recipeService'
 import { orderService, OrderItem } from '@/lib/services/orderService'
+import { BotonReceta } from '@/components/shared/BotonReceta'
 
 interface OrderItemWithStock extends OrderItem {
   tiene_stock?: boolean
@@ -309,17 +310,24 @@ export default function NewOrderPage() {
                   <TabsContent value="preparadas" className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       {recetas.map(recipe => (
-                        <Button
-                          key={recipe.id}
-                          variant="outline"
-                          className="justify-start h-auto py-2 px-3 text-left"
-                          onClick={() => addToCart(recipe, 'receta')}
-                        >
-                          <div>
-                            <p className="font-medium text-sm truncate">{recipe.nombre}</p>
-                            <p className="text-xs text-gray-500">${recipe.precio_venta}</p>
-                          </div>
-                        </Button>
+                        <div key={recipe.id} className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            className="justify-start h-auto py-2 px-3 text-left flex-1 min-w-0"
+                            onClick={() => addToCart(recipe, 'receta')}
+                          >
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm truncate">{recipe.nombre}</p>
+                              <p className="text-xs text-gray-500">${recipe.precio_venta}</p>
+                            </div>
+                          </Button>
+                          <BotonReceta 
+                            recetaId={recipe.id} 
+                            recetaNombre={recipe.nombre}
+                            variant="icon"
+                            size="sm"
+                          />
+                        </div>
                       ))}
                     </div>
                   </TabsContent>
@@ -329,27 +337,28 @@ export default function NewOrderPage() {
                       {productos
                         .filter(p => p.es_bebida_principal && p.stock_actual > 0)
                         .map(producto => (
-                          <Button
-                            key={producto.id}
-                            variant="outline"
-                            className="justify-start h-auto py-2 px-3 text-left"
-                            onClick={() => addToCart({
-                              id: producto.id,
-                              nombre: producto.nombre,
-                              precio_venta: producto.precio_venta,
-                              stock_actual: producto.stock_actual
-                            }, 'producto')}
-                          >
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-sm truncate">{producto.nombre}</p>
-                                <Badge className="text-xs bg-green-100 text-green-700">
-                                  {producto.stock_actual} disp.
-                                </Badge>
+                          <div key={producto.id} className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              className="justify-start h-auto py-2 px-3 text-left flex-1 min-w-0"
+                              onClick={() => addToCart({
+                                id: producto.id,
+                                nombre: producto.nombre,
+                                precio_venta: producto.precio_venta,
+                                stock_actual: producto.stock_actual
+                              }, 'producto')}
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-sm truncate">{producto.nombre}</p>
+                                  <Badge className="text-xs bg-green-100 text-green-700 flex-shrink-0">
+                                    {producto.stock_actual} disp.
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-gray-500">${producto.precio_venta}</p>
                               </div>
-                              <p className="text-xs text-gray-500">${producto.precio_venta}</p>
-                            </div>
-                          </Button>
+                            </Button>
+                          </div>
                         ))}
                     </div>
                   </TabsContent>
@@ -359,27 +368,28 @@ export default function NewOrderPage() {
                       {productos
                         .filter(p => p.es_insumo && p.stock_actual > 0)
                         .map(producto => (
-                          <Button
-                            key={producto.id}
-                            variant="outline"
-                            className="justify-start h-auto py-2 px-3 text-left"
-                            onClick={() => addToCart({
-                              id: producto.id,
-                              nombre: producto.nombre,
-                              precio_venta: producto.precio_venta || 0,
-                              stock_actual: producto.stock_actual
-                            }, 'producto')}
-                          >
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-sm truncate">{producto.nombre}</p>
-                                <Badge className="text-xs bg-green-100 text-green-700">
-                                  {producto.stock_actual} disp.
-                                </Badge>
+                          <div key={producto.id} className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              className="justify-start h-auto py-2 px-3 text-left flex-1 min-w-0"
+                              onClick={() => addToCart({
+                                id: producto.id,
+                                nombre: producto.nombre,
+                                precio_venta: producto.precio_venta || 0,
+                                stock_actual: producto.stock_actual
+                              }, 'producto')}
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-sm truncate">{producto.nombre}</p>
+                                  <Badge className="text-xs bg-green-100 text-green-700 flex-shrink-0">
+                                    {producto.stock_actual} disp.
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-gray-500">${producto.precio_venta || 0}</p>
                               </div>
-                              <p className="text-xs text-gray-500">${producto.precio_venta || 0}</p>
-                            </div>
-                          </Button>
+                            </Button>
+                          </div>
                         ))}
                     </div>
                   </TabsContent>

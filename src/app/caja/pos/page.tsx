@@ -19,6 +19,7 @@ import { productService, Product } from '@/lib/services/productService'
 import { orderService } from '@/lib/services/orderService'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
+import { BotonReceta } from '@/components/shared/BotonReceta'
 
 interface CartItem extends Product {
   cantidad: number
@@ -208,16 +209,13 @@ export default function CajaPOSPage() {
         duration: 6000
       })
 
-      // Limpiar formulario
       setCart([])
       setEfectivoRecibido('')
       setMesa('')
       setNotas('')
       
-      // Recargar productos para actualizar stock
       await fetchProductos()
       
-      // Redirigir al dashboard después de 1.5 segundos
       setTimeout(() => {
         router.push('/caja')
       }, 1500)
@@ -280,7 +278,6 @@ export default function CajaPOSPage() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
-        {/* Catálogo */}
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
@@ -312,26 +309,38 @@ export default function CajaPOSPage() {
                     {filteredProductos.map((producto) => (
                       <Card
                         key={producto.id}
-                        className="cursor-pointer hover:shadow-lg hover:scale-[1.02] transition-all duration-200 border-2 hover:border-emerald-300"
-                        onClick={() => addToCart(producto)}
+                        className="hover:shadow-lg hover:scale-[1.02] transition-all duration-200 border-2 hover:border-emerald-300 relative"
                       >
                         <CardContent className="p-3 text-center">
-                          <p className="font-medium text-sm truncate" title={producto.nombre}>
-                            {producto.nombre}
-                          </p>
-                          <p className="text-xs text-gray-500 truncate">{producto.marca}</p>
-                          <p className="text-lg font-bold text-emerald-600 mt-1">
-                            ${producto.precio_venta?.toFixed(2) || '0.00'}
-                          </p>
-                          <Badge 
-                            className={`mt-1 text-xs ${
-                              producto.stock_actual <= producto.stock_minimo
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-green-100 text-green-700'
-                            }`}
+                          <div
+                            className="cursor-pointer"
+                            onClick={() => addToCart(producto)}
                           >
-                            Stock: {producto.stock_actual}
-                          </Badge>
+                            <p className="font-medium text-sm truncate" title={producto.nombre}>
+                              {producto.nombre}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">{producto.marca}</p>
+                            <p className="text-lg font-bold text-emerald-600 mt-1">
+                              ${producto.precio_venta?.toFixed(2) || '0.00'}
+                            </p>
+                          </div>
+                          <div className="flex items-center justify-center gap-1 mt-1">
+                            <Badge 
+                              className={`text-xs ${
+                                producto.stock_actual <= producto.stock_minimo
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-green-100 text-green-700'
+                              }`}
+                            >
+                              Stock: {producto.stock_actual}
+                            </Badge>
+                            <BotonReceta 
+                              recetaId={producto.id} 
+                              recetaNombre={producto.nombre}
+                              variant="icon"
+                              size="sm"
+                            />
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
@@ -342,7 +351,6 @@ export default function CajaPOSPage() {
           </Card>
         </div>
 
-        {/* Carrito */}
         <div>
           <Card className="sticky top-20">
             <CardHeader>
