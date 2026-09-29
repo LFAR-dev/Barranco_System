@@ -22,11 +22,23 @@ export function JornadaButton({ onJornadaChange }: JornadaButtonProps) {
     cargarJornada()
     const interval = setInterval(cargarJornada, 60000)
     const cleanup = escucharEventosJornada(cargarJornada)
+
+    // Escuchar cuando el dropdown del avatar pide abrir el modal
+    const handleAbrirDesdeAvatar = () => {
+      if (jornada) {
+        setCerrarModal(true)
+      } else {
+        setAbrirModal(true)
+      }
+    }
+    window.addEventListener('jornada:abrir-modal-desde-avatar', handleAbrirDesdeAvatar)
+
     return () => {
       clearInterval(interval)
       cleanup()
+      window.removeEventListener('jornada:abrir-modal-desde-avatar', handleAbrirDesdeAvatar)
     }
-  }, [])
+  }, [jornada])
 
   const cargarJornada = async () => {
     try {

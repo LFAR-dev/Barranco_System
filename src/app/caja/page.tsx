@@ -20,6 +20,7 @@ import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
 import { EstadoSesionCaja } from '@/components/caja/EstadoSesionCaja'
 import { HeaderRol } from '@/components/layout/HeaderRol'
+import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
 
 export default function CajaDashboard() {
   const { user, loading: authLoading, logout } = useAuth()
@@ -27,6 +28,7 @@ export default function CajaDashboard() {
   const { toast } = useToast()
   const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const [pedidos, setPedidos] = useState<Order[]>([])
+  const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [pedidoToCancel, setPedidoToCancel] = useState<Order | null>(null)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
@@ -159,6 +161,8 @@ export default function CajaDashboard() {
     }
   }
 
+  const nombreCompleto = `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
+
   if (authLoading || (loading && pedidos.length === 0)) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -182,9 +186,8 @@ export default function CajaDashboard() {
 
       <HeaderRol
         rol="caja"
-        userName={`${user?.nombre || ''} ${user?.apellido || ''}`.trim()}
-        userEmail={user?.email}
         onLogout={handleLogout}
+        onSalirTurno={() => setIsSalirTurnoOpen(true)}
       >
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
@@ -437,6 +440,15 @@ export default function CajaDashboard() {
           mesa: pedidoToCancel.mesa,
           total: pedidoToCancel.total
         } : undefined}
+      />
+
+      <SalirTurnoModal
+        isOpen={isSalirTurnoOpen}
+        onClose={() => setIsSalirTurnoOpen(false)}
+        onConfirmarSalida={handleLogout}
+        rol="caja"
+        usuarioNombre={nombreCompleto}
+        usuarioId={user?.id || ''}
       />
     </div>
   )

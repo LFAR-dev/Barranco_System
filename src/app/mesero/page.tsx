@@ -14,6 +14,7 @@ import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
 import { ToggleDisponibilidad } from '@/components/shared/ToggleDisponibilidad'
 import { HeaderRol } from '@/components/layout/HeaderRol'
+import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
 
 export default function MeseroDashboard() {
   const { user, logout } = useAuth()
@@ -21,6 +22,7 @@ export default function MeseroDashboard() {
   const { toast } = useToast()
   const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const [orders, setOrders] = useState<Order[]>([])
+  const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -67,6 +69,8 @@ export default function MeseroDashboard() {
     router.push('/')
   }
 
+  const nombreCompleto = `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
+
   if (loading && orders.length === 0) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -85,9 +89,8 @@ export default function MeseroDashboard() {
 
       <HeaderRol
         rol="mesero"
-        userName={`${user?.nombre || ''} ${user?.apellido || ''}`.trim()}
-        userEmail={user?.email}
         onLogout={handleLogout}
+        onSalirTurno={() => setIsSalirTurnoOpen(true)}
       >
         {user?.id && <ToggleDisponibilidad rol="mesero" usuarioId={user.id} />}
         <Button variant="ghost" size="icon" className="relative">
@@ -190,6 +193,15 @@ export default function MeseroDashboard() {
           </Card>
         </div>
       </main>
+
+      <SalirTurnoModal
+        isOpen={isSalirTurnoOpen}
+        onClose={() => setIsSalirTurnoOpen(false)}
+        onConfirmarSalida={handleLogout}
+        rol="mesero"
+        usuarioNombre={nombreCompleto}
+        usuarioId={user?.id || ''}
+      />
     </div>
   )
 }

@@ -21,6 +21,7 @@ import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay
 import { ToggleDisponibilidad } from '@/components/shared/ToggleDisponibilidad'
 import { BotonReceta } from '@/components/shared/BotonReceta'
 import { HeaderRol } from '@/components/layout/HeaderRol'
+import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
 import {
   Dialog,
   DialogContent,
@@ -39,6 +40,7 @@ export default function BartenderDashboard() {
   const [pedidos, setPedidos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMermaOpen, setIsMermaOpen] = useState(false)
+  const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
   const [mermaData, setMermaData] = useState({
     producto: '',
     cantidad: 0,
@@ -193,6 +195,8 @@ export default function BartenderDashboard() {
     }
   }
 
+  const nombreCompleto = `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
+
   if (loading && pedidos.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -210,9 +214,8 @@ export default function BartenderDashboard() {
 
       <HeaderRol
         rol="bartender"
-        userName={`${user?.nombre || ''} ${user?.apellido || ''}`.trim()}
-        userEmail={user?.email}
         onLogout={handleLogout}
+        onSalirTurno={() => setIsSalirTurnoOpen(true)}
       >
         {user?.id && <ToggleDisponibilidad rol="bartender" usuarioId={user.id} />}
         <NotificationBell bartenderId={user?.id || ''} />
@@ -451,6 +454,15 @@ export default function BartenderDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <SalirTurnoModal
+        isOpen={isSalirTurnoOpen}
+        onClose={() => setIsSalirTurnoOpen(false)}
+        onConfirmarSalida={handleLogout}
+        rol="bartender"
+        usuarioNombre={nombreCompleto}
+        usuarioId={user?.id || ''}
+      />
     </div>
   )
 }

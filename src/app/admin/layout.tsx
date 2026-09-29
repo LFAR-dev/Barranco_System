@@ -48,6 +48,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }
 
+  const handleJornadaDesdeAvatar = () => {
+    // Emitir evento que JornadaButton escucha para abrir su modal
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('jornada:abrir-modal-desde-avatar'))
+    }
+  }
+
   if (loading || redirecting) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -79,19 +86,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="min-h-screen bg-gray-50">
         <HeaderRol
           rol="admin"
-          userName={`${user.nombre || ''} ${user.apellido || ''}`.trim()}
-          userEmail={user.email}
           navItems={NAV_ITEMS}
           onLogout={handleLogout}
           onEditProfile={() => setIsProfileOpen(true)}
+          onJornadaClick={handleJornadaDesdeAvatar}
         >
-          <JornadaButton />
           <AdminNotificationBell />
         </HeaderRol>
         <div className="relative">{children}</div>
       </div>
       <ToastContainer />
-      <EditProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} user={user} onUpdate={() => {}} />
+      <EditProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        user={user}
+        onUpdate={() => {}}
+      />
+      {/* JornadaButton invisible que maneja los modales de jornada */}
+      <div className="hidden">
+        <JornadaButton />
+      </div>
     </>
   )
 }
