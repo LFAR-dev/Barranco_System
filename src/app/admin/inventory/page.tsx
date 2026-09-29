@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { InventoryList } from '@/components/admin/InventoryList'
+import InventoryList from '@/components/admin/InventoryList'
 import { RendimientoBotellasGrid } from '@/components/admin/RendimientoBotellasGrid'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
