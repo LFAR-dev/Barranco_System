@@ -156,6 +156,17 @@ const [modalMostrado, setModalMostrado] = useState(false)
             </CardContent>
           </Card>
         </Link>
+        <Link href="/admin/cajas">
+  <Card className="hover:shadow-md transition-shadow cursor-pointer border-teal-100 bg-teal-50/50">
+    <CardContent className="p-3 flex items-center gap-2">
+      <div className="p-1.5 bg-teal-100 rounded-lg"><Wallet className="h-4 w-4 text-teal-600" /></div>
+      <div>
+        <p className="text-xs font-medium text-gray-900">Cajas Físicas</p>
+        <p className="text-xs text-gray-500">Terminales</p>
+      </div>
+    </CardContent>
+  </Card>
+</Link>
         <Link href="/admin/users">
           <Card className="hover:shadow-md transition-shadow cursor-pointer border-purple-100 bg-purple-50/50">
             <CardContent className="p-3 flex items-center gap-2">

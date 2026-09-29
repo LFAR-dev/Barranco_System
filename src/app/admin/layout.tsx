@@ -78,6 +78,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <a href="/admin/bartenders" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Bartenders</a>
                   <a href="/admin/meseros" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Meseros</a>
                   <a href="/admin/caja" className="text-emerald-600 hover:text-emerald-800 transition-colors px-2 py-1 rounded-md hover:bg-emerald-50 font-medium">Caja</a>
+                  <a href="/admin/cajas" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Cajas Físicas</a>
                   <a href="/admin/users" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Usuarios</a>
                   <a href="/admin/inventory" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Inventario</a>
                   <a href="/admin/recipes" className="text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 rounded-md hover:bg-gray-100">Recetas</a>
