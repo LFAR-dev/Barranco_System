@@ -19,7 +19,6 @@ import { orderService, Order } from '@/lib/services/orderService'
 import { CancelOrderModal } from '@/components/caja/CancelOrderModal'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
-import { EstadoSesionCaja } from '@/components/caja/EstadoSesionCaja'
 
 export default function CajaDashboard() {
   const { user, loading: authLoading, logout } = useAuth()
@@ -30,7 +29,6 @@ export default function CajaDashboard() {
   const [loading, setLoading] = useState(true)
   const [pedidoToCancel, setPedidoToCancel] = useState<Order | null>(null)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
-  const [sesionActiva, setSesionActiva] = useState<any>(null)
   const [stats, setStats] = useState({
     total: 0,
     pendientes: 0,
@@ -208,11 +206,7 @@ export default function CajaDashboard() {
             </div>
           </div>
         </div>
-            </header>
-
-      <div className="px-4 sm:px-6 lg:px-8 pt-6">
-        <EstadoSesionCaja onSesionChange={setSesionActiva} />
-      </div>
+      </header>
 
       <main className="px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
