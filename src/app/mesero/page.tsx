@@ -13,6 +13,7 @@ import { orderService, Order } from '@/lib/services/orderService'
 import { useToast } from '@/hooks/use-toast'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
+import { ToggleDisponibilidad } from '@/components/shared/ToggleDisponibilidad'
 
 export default function MeseroDashboard() {
   const { user, logout } = useAuth()
@@ -89,7 +90,8 @@ export default function MeseroDashboard() {
               <span className="text-xl font-bold text-gray-900">BARRANCO</span>
               <span className="ml-2 text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-1 rounded-full">Mesero</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              {user?.id && <ToggleDisponibilidad rol="mesero" usuarioId={user.id} />}
               <Button variant="ghost" size="icon" className="relative">
                 <Bell className="h-5 w-5" />
                 {pendientes.length > 0 && (

@@ -18,6 +18,7 @@ import { NotificationBell } from '@/components/bartender/NotificationBell'
 import { orderService } from '@/lib/services/orderService'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
+import { ToggleDisponibilidad } from '@/components/shared/ToggleDisponibilidad'
 import {
   Dialog,
   DialogContent,
@@ -213,7 +214,8 @@ export default function BartenderDashboard() {
               <span className="text-xl font-bold text-gray-900">BARRANCO</span>
               <span className="ml-2 text-xs font-semibold text-green-600 bg-green-100 px-2 py-1 rounded-full">Bartender</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              {user?.id && <ToggleDisponibilidad rol="bartender" usuarioId={user.id} />}
               <NotificationBell bartenderId={user?.id || ''} />
               <Button 
                 variant="outline" 
