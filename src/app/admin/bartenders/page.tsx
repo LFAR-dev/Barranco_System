@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { 
   Search, Users, ArrowLeft, RefreshCw, Star, User, 
   CheckCircle, XCircle, Key, Clock, Plus,
-  Edit, Trash2, Camera, DollarSign, TrendingUp, Award
+  Edit, Trash2, Camera, DollarSign, TrendingUp, Award,
+  BarChart3
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,17 +31,20 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Progress } from '@/components/ui/progress'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { userService } from '@/lib/services/userService'
 import { createClient } from '@/lib/supabase/client'
 import BartenderForm from '@/components/admin/BartenderForm'
 import { UserNIPCard } from '@/components/admin/UserNIPCard'
+import { RendimientoRolTab } from '@/components/admin/jornada/RendimientoRolTab'
 import { useToast } from '@/hooks/use-toast'
 
 export default function BartendersPage() {
   const { user } = useAuth()
   const { toast } = useToast()
   const supabase = createClient()
+  const [activeTab, setActiveTab] = useState('gestion')
   const [bartenders, setBartenders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -196,14 +200,15 @@ export default function BartendersPage() {
   }
 
   const getColor = (index: number) => {
-    const colors = ['bg-blue-600', 'bg-green-600', 'bg-purple-600', 'bg-orange-600', 'bg-red-600', 'bg-teal-600', 'bg-pink-600']
+    const colors = ['bg-green-600', 'bg-emerald-600', 'bg-teal-600', 'bg-cyan-600', 'bg-lime-600', 'bg-teal-700']
     return colors[index % colors.length]
   }
 
-  const getEfficiencyColor = (value: number) => {
-    if (value >= 90) return 'text-green-600'
-    if (value >= 70) return 'text-yellow-600'
-    return 'text-red-600'
+  const getRatingStars = (rating: number) => {
+    const full = Math.floor(rating)
+    const half = rating % 1 >= 0.5 ? 1 : 0
+    const empty = 5 - full - half
+    return '⭐'.repeat(full) + (half ? '⭐' : '') + '☆'.repeat(empty)
   }
 
   const filteredBartenders = bartenders.filter(b =>
@@ -212,7 +217,7 @@ export default function BartendersPage() {
     b.usuarios?.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  if (loading) {
+  if (loading && bartenders.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
@@ -222,223 +227,254 @@ export default function BartendersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <Link href="/admin">
-              <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Volver
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Bartenders</h1>
-              <p className="text-sm text-gray-500">Gestiona el equipo de bartenders</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-green-600 hover:bg-green-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nuevo Bartender
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <User className="h-5 w-5" />
-                    Crear Nuevo Bartender
-                  </DialogTitle>
-                </DialogHeader>
-                <BartenderForm
-                  onSuccess={() => {
-                    setIsDialogOpen(false)
-                    fetchBartenders()
-                  }}
-                  onCancel={() => setIsDialogOpen(false)}
-                />
-              </DialogContent>
-            </Dialog>
-            <Button variant="outline" onClick={fetchBartenders}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+          <TabsList className="grid w-full max-w-md grid-cols-2 h-auto p-1">
+            <TabsTrigger value="gestion" className="flex items-center gap-2 py-2 data-[state=active]:bg-green-600 data-[state=active]:text-white">
+              <Users className="h-4 w-4" />
+              Gestión
+            </TabsTrigger>
+            <TabsTrigger value="rendimiento" className="flex items-center gap-2 py-2 data-[state=active]:bg-green-600 data-[state=active]:text-white">
+              <BarChart3 className="h-4 w-4" />
+              Rendimiento
+            </TabsTrigger>
+          </TabsList>
         </div>
 
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Buscar bartenders por nombre, código o email..."
-            className="pl-9"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredBartenders.map((bartender, index) => {
-            const usuario = bartender.usuarios || {}
-            const isActivo = usuario.activo
-            const eficiencia = bartender.calificacion_eficiencia || 0
-
-            return (
-              <Card key={bartender.id} className={`hover:shadow-lg transition-all duration-300 border-t-4 ${
-                isActivo ? 'border-t-green-500' : 'border-t-red-500'
-              }`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="relative group">
-                      <Avatar className={`h-16 w-16 ${getColor(index)}`}>
-                        {bartender.foto_url ? (
-                          <AvatarImage src={bartender.foto_url} alt={bartender.nombre_completo} />
-                        ) : usuario.avatar_url ? (
-                          <AvatarImage src={usuario.avatar_url} alt={bartender.nombre_completo} />
-                        ) : null}
-                        <AvatarFallback className="text-white text-lg font-semibold">
-                          {getInitials(bartender.nombre_completo)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleUploadImage(bartender.id, e.target.files[0])
-                          }
-                        }}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="absolute -bottom-1 -right-1 h-6 w-6 p-0 rounded-full bg-white shadow-md hover:bg-gray-50"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingImage === bartender.id}
-                      >
-                        {uploadingImage === bartender.id ? (
-                          <div className="h-3 w-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Camera className="h-3 w-3" />
-                        )}
-                      </Button>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-gray-900 truncate">{bartender.nombre_completo}</h3>
-                        <Badge className={isActivo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                          {isActivo ? 'Activo' : 'Inactivo'}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-500">Código: {bartender.codigo || 'N/A'}</p>
-                      <p className="text-xs text-gray-400 truncate">{usuario.email}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <UserNIPCard
-                      usuarioId={usuario.id}
-                      usuarioNombre={bartender.nombre_completo}
-                      onNIPChange={fetchBartenders}
+        <TabsContent value="gestion" className="mt-0">
+          <div className="px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-4">
+                <Link href="/admin">
+                  <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Volver
+                  </Button>
+                </Link>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Bartenders</h1>
+                  <p className="text-sm text-gray-500">Gestiona el equipo de bartenders</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-green-600 hover:bg-green-700">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nuevo Bartender
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <User className="h-5 w-5" />
+                        Crear Nuevo Bartender
+                      </DialogTitle>
+                    </DialogHeader>
+                    <BartenderForm
+                      onSuccess={() => {
+                        setIsDialogOpen(false)
+                        fetchBartenders()
+                      }}
+                      onCancel={() => setIsDialogOpen(false)}
                     />
-                  </div>
+                  </DialogContent>
+                </Dialog>
+                <Button variant="outline" onClick={fetchBartenders}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    <div className="text-center p-2 bg-blue-50 rounded-lg">
-                      <DollarSign className="h-4 w-4 text-blue-600 mx-auto" />
-                      <p className="text-xs text-gray-500">Ventas</p>
-                      <p className="text-sm font-bold text-gray-900">${bartender.ventas_totales?.toFixed(0) || 0}</p>
-                    </div>
-                    <div className="text-center p-2 bg-green-50 rounded-lg">
-                      <TrendingUp className="h-4 w-4 text-green-600 mx-auto" />
-                      <p className="text-xs text-gray-500">Bebidas</p>
-                      <p className="text-sm font-bold text-gray-900">{bartender.bebidas_preparadas || 0}</p>
-                    </div>
-                    <div className="text-center p-2 bg-purple-50 rounded-lg">
-                      <Award className="h-4 w-4 text-purple-600 mx-auto" />
-                      <p className="text-xs text-gray-500">Eficiencia</p>
-                      <p className={`text-sm font-bold ${getEfficiencyColor(eficiencia)}`}>
-                        {eficiencia.toFixed(0)}%
-                      </p>
-                    </div>
-                  </div>
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar bartenders por nombre, código o email..."
+                className="pl-9"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
 
-                  <div className="mt-3">
-                    <Progress value={Math.min(eficiencia, 100)} className="h-1.5" />
-                    <div className="flex justify-between text-xs text-gray-400 mt-0.5">
-                      <span>Rendimiento</span>
-                      <span className="font-medium">
-                        {eficiencia >= 90 ? '🌟 Excelente' : eficiencia >= 70 ? '👍 Bueno' : '📈 Mejorable'}
-                      </span>
-                    </div>
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredBartenders.map((bartender, index) => {
+                const usuario = bartender.usuarios || {}
+                const isActivo = usuario.activo
+                const calificacion = bartender.calificacion_eficiencia || 0
+                const productividad = bartender.productividad || 0
 
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                    <div className="flex items-center gap-1">
-                      <Star className={`h-4 w-4 ${eficiencia >= 90 ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}`} />
-                      <span className="text-sm text-gray-600">
-                        {eficiencia >= 90 ? 'Top Bartender' : eficiencia >= 70 ? 'Profesional' : 'En formación'}
-                      </span>
-                    </div>
-                    <div className="flex gap-1">
-                      {isActivo ? (
-                        <>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => handleDesactivar(usuario.id)}
-                            disabled={actionLoading === usuario.id}
-                          >
-                            <XCircle className="h-3 w-3 mr-1" />
-                            Desactivar
-                          </Button>
+                return (
+                  <Card key={bartender.id} className={`hover:shadow-lg transition-all duration-300 border-t-4 ${
+                    isActivo ? 'border-t-green-500' : 'border-t-red-500'
+                  }`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="relative group">
+                          <Avatar className={`h-16 w-16 ${getColor(index)}`}>
+                            {bartender.foto_url ? (
+                              <AvatarImage src={bartender.foto_url} alt={bartender.nombre_completo} />
+                            ) : usuario.avatar_url ? (
+                              <AvatarImage src={usuario.avatar_url} alt={bartender.nombre_completo} />
+                            ) : null}
+                            <AvatarFallback className="text-white text-lg font-semibold">
+                              {getInitials(bartender.nombre_completo)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleUploadImage(bartender.id, e.target.files[0])
+                              }
+                            }}
+                          />
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => {
-                              setSelectedBartender(bartender)
-                              setIsDeleteDialogOpen(true)
-                            }}
+                            className="absolute -bottom-1 -right-1 h-6 w-6 p-0 rounded-full bg-white shadow-md hover:bg-gray-50"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingImage === bartender.id}
                           >
-                            <Trash2 className="h-3 w-3" />
+                            {uploadingImage === bartender.id ? (
+                              <div className="h-3 w-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Camera className="h-3 w-3" />
+                            )}
                           </Button>
-                        </>
-                      ) : (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                          onClick={() => handleActivar(usuario.id)}
-                          disabled={actionLoading === usuario.id}
-                        >
-                          {actionLoading === usuario.id ? (
-                            <div className="animate-spin h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full" />
-                          ) : (
-                            <>
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Reactivar
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-900 truncate">{bartender.nombre_completo}</h3>
+                            <Badge className={isActivo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                              {isActivo ? 'Activo' : 'Inactivo'}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-500">Código: {bartender.codigo || 'N/A'}</p>
+                          <p className="text-xs text-gray-400 truncate">{usuario.email}</p>
+                        </div>
+                      </div>
 
-        {filteredBartenders.length === 0 && (
-          <div className="text-center py-12">
-            <Users className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-500">No se encontraron bartenders</p>
+                      <div className="mt-3">
+                        <UserNIPCard
+                          usuarioId={usuario.id}
+                          usuarioNombre={bartender.nombre_completo}
+                          onNIPChange={fetchBartenders}
+                        />
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="text-center p-2 bg-blue-50 rounded-lg">
+                          <TrendingUp className="h-4 w-4 text-blue-600 mx-auto" />
+                          <p className="text-xs text-gray-500">Bebidas</p>
+                          <p className="text-sm font-bold text-gray-900">{bartender.bebidas_preparadas || 0}</p>
+                        </div>
+                        <div className="text-center p-2 bg-green-50 rounded-lg">
+                          <DollarSign className="h-4 w-4 text-green-600 mx-auto" />
+                          <p className="text-xs text-gray-500">Ventas</p>
+                          <p className="text-sm font-bold text-gray-900">${bartender.ventas_totales?.toFixed(0) || 0}</p>
+                        </div>
+                        <div className="text-center p-2 bg-yellow-50 rounded-lg">
+                          <Award className="h-4 w-4 text-yellow-600 mx-auto" />
+                          <p className="text-xs text-gray-500">Eficiencia</p>
+                          <p className="text-sm font-bold text-yellow-600">{calificacion.toFixed(1)}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-medium text-gray-700">Eficiencia:</span>
+                          <span className="text-sm">{getRatingStars(calificacion)}</span>
+                          <span className="text-xs text-gray-400 ml-1">({calificacion.toFixed(1)})</span>
+                        </div>
+                        <Progress value={Math.min((productividad), 100)} className="h-1.5 mt-1" />
+                        <p className="text-xs text-gray-400 mt-1">Productividad: {productividad.toFixed(0)}%</p>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4 text-gray-400" />
+                          <span className="text-sm text-gray-600">
+                            {calificacion >= 4.5 ? '🌟 Excelente' : calificacion >= 3.5 ? '👍 Bueno' : '📈 Mejorable'}
+                          </span>
+                        </div>
+                        <div className="flex gap-1">
+                          {isActivo ? (
+                            <>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                className="text-red-600 border-red-200 hover:bg-red-50"
+                                onClick={() => handleDesactivar(usuario.id)}
+                                disabled={actionLoading === usuario.id}
+                              >
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Desactivar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-200 hover:bg-red-50"
+                                onClick={() => {
+                                  setSelectedBartender(bartender)
+                                  setIsDeleteDialogOpen(true)
+                                }}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                              onClick={() => handleActivar(usuario.id)}
+                              disabled={actionLoading === usuario.id}
+                            >
+                              {actionLoading === usuario.id ? (
+                                <div className="animate-spin h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full" />
+                              ) : (
+                                <>
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Reactivar
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+
+            {filteredBartenders.length === 0 && (
+              <div className="text-center py-12">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500">No se encontraron bartenders</p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </TabsContent>
+
+        <TabsContent value="rendimiento" className="mt-0">
+          <div className="px-4 sm:px-6 lg:px-8 py-6">
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-green-600" />
+                Rendimiento de Bartenders
+              </h2>
+              <p className="text-sm text-gray-500">
+                Estadísticas de pedidos preparados por jornada
+              </p>
+            </div>
+            <RendimientoRolTab rol="bartender" />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>

@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { 
   Search, ArrowLeft, RefreshCw, 
   CheckCircle, XCircle, Plus, Trash2, Camera, 
-  DollarSign, Wallet, Edit, Loader2
+  DollarSign, Wallet, Edit, Loader2,
+  Users, BarChart3
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,16 +30,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { userService } from '@/lib/services/userService'
 import CajaForm from '@/components/admin/CajaForm'
 import { UserNIPCard } from '@/components/admin/UserNIPCard'
+import { RendimientoRolTab } from '@/components/admin/jornada/RendimientoRolTab'
 import { useToast } from '@/hooks/use-toast'
 import { updateStats } from '../stats'
 
 export default function CajaPage() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const [activeTab, setActiveTab] = useState('gestion')
   const [cajeros, setCajeros] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -190,7 +194,7 @@ export default function CajaPage() {
     c.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  if (loading) {
+  if (loading && cajeros.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-12 w-12 text-emerald-600 animate-spin" />
@@ -200,217 +204,249 @@ export default function CajaPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <Link href="/admin">
-              <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Volver
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Wallet className="h-6 w-6 text-emerald-600" />
-                Caja
-              </h1>
-              <p className="text-sm text-gray-500">Gestiona los usuarios de caja</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-emerald-600 hover:bg-emerald-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nuevo Usuario de Caja
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Wallet className="h-5 w-5 text-emerald-600" />
-                    Crear Nuevo Usuario de Caja
-                  </DialogTitle>
-                </DialogHeader>
-                <CajaForm
-                  onSuccess={() => {
-                    setIsDialogOpen(false)
-                    fetchCajeros()
-                  }}
-                  onCancel={() => setIsDialogOpen(false)}
-                />
-              </DialogContent>
-            </Dialog>
-            <Button variant="outline" onClick={fetchCajeros}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+          <TabsList className="grid w-full max-w-md grid-cols-2 h-auto p-1">
+            <TabsTrigger value="gestion" className="flex items-center gap-2 py-2 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+              <Users className="h-4 w-4" />
+              Gestión
+            </TabsTrigger>
+            <TabsTrigger value="rendimiento" className="flex items-center gap-2 py-2 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+              <BarChart3 className="h-4 w-4" />
+              Rendimiento
+            </TabsTrigger>
+          </TabsList>
         </div>
 
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Buscar por nombre, apellido o correo..."
-            className="pl-9"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredCajeros.map((cajero, index) => {
-            const isActivo = cajero.activo
-
-            return (
-              <Card key={cajero.id} className={`hover:shadow-lg transition-all duration-300 border-t-4 ${
-                isActivo ? 'border-t-emerald-500' : 'border-t-red-500'
-              }`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="relative group">
-                      <Avatar className={`h-16 w-16 ${getColor(index)}`}>
-                        {cajero.avatar_url ? (
-                          <AvatarImage src={cajero.avatar_url} alt={cajero.nombre} />
-                        ) : null}
-                        <AvatarFallback className="text-white text-lg font-semibold">
-                          {getInitials(cajero.nombre, cajero.apellido)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleUploadImage(cajero.id, e.target.files[0])
-                          }
-                        }}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="absolute -bottom-1 -right-1 h-6 w-6 p-0 rounded-full bg-white shadow-md hover:bg-gray-50"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingImage === cajero.id}
-                      >
-                        {uploadingImage === cajero.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Camera className="h-3 w-3" />
-                        )}
-                      </Button>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-gray-900 truncate">
-                          {cajero.nombre} {cajero.apellido}
-                        </h3>
-                        <Badge className={isActivo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
-                          {isActivo ? 'Activo' : 'Inactivo'}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
-                        📧 {cajero.email}
-                      </p>
-                      {cajero.phone_number && (
-                        <p className="text-xs text-gray-400 flex items-center gap-1">
-                          📱 {cajero.phone_number}
-                        </p>
-                      )}
-                      <Badge className="bg-emerald-100 text-emerald-700 text-xs mt-1">
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        Caja
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <UserNIPCard
-                      usuarioId={cajero.id}
-                      usuarioNombre={`${cajero.nombre} ${cajero.apellido}`}
-                      onNIPChange={fetchCajeros}
+        <TabsContent value="gestion" className="mt-0">
+          <div className="px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-4">
+                <Link href="/admin">
+                  <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Volver
+                  </Button>
+                </Link>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <Wallet className="h-6 w-6 text-emerald-600" />
+                    Caja
+                  </h1>
+                  <p className="text-sm text-gray-500">Gestiona los usuarios de caja</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-emerald-600 hover:bg-emerald-700">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nuevo Usuario de Caja
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Wallet className="h-5 w-5 text-emerald-600" />
+                        Crear Nuevo Usuario de Caja
+                      </DialogTitle>
+                    </DialogHeader>
+                    <CajaForm
+                      onSuccess={() => {
+                        setIsDialogOpen(false)
+                        fetchCajeros()
+                      }}
+                      onCancel={() => setIsDialogOpen(false)}
                     />
-                  </div>
+                  </DialogContent>
+                </Dialog>
+                <Button variant="outline" onClick={fetchCajeros}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
 
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                    <div className="flex items-center gap-1">
-                      <Wallet className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm text-gray-600">
-                        Usuario de caja
-                      </span>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                        onClick={() => handleOpenEdit(cajero)}
-                        title="Editar"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      {isActivo ? (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          className="text-red-600 border-red-200 hover:bg-red-50"
-                          onClick={() => handleDesactivar(cajero.id)}
-                          disabled={actionLoading === cajero.id}
-                          title="Desactivar"
-                        >
-                          <XCircle className="h-3 w-3" />
-                        </Button>
-                      ) : (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
-                          onClick={() => handleActivar(cajero.id)}
-                          disabled={actionLoading === cajero.id}
-                          title="Activar"
-                        >
-                          {actionLoading === cajero.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <CheckCircle className="h-3 w-3" />
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar por nombre, apellido o correo..."
+                className="pl-9"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredCajeros.map((cajero, index) => {
+                const isActivo = cajero.activo
+
+                return (
+                  <Card key={cajero.id} className={`hover:shadow-lg transition-all duration-300 border-t-4 ${
+                    isActivo ? 'border-t-emerald-500' : 'border-t-red-500'
+                  }`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="relative group">
+                          <Avatar className={`h-16 w-16 ${getColor(index)}`}>
+                            {cajero.avatar_url ? (
+                              <AvatarImage src={cajero.avatar_url} alt={cajero.nombre} />
+                            ) : null}
+                            <AvatarFallback className="text-white text-lg font-semibold">
+                              {getInitials(cajero.nombre, cajero.apellido)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleUploadImage(cajero.id, e.target.files[0])
+                              }
+                            }}
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="absolute -bottom-1 -right-1 h-6 w-6 p-0 rounded-full bg-white shadow-md hover:bg-gray-50"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingImage === cajero.id}
+                          >
+                            {uploadingImage === cajero.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Camera className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-900 truncate">
+                              {cajero.nombre} {cajero.apellido}
+                            </h3>
+                            <Badge className={isActivo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
+                              {isActivo ? 'Activo' : 'Inactivo'}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-500 flex items-center gap-1">
+                            📧 {cajero.email}
+                          </p>
+                          {cajero.phone_number && (
+                            <p className="text-xs text-gray-400 flex items-center gap-1">
+                              📱 {cajero.phone_number}
+                            </p>
                           )}
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-red-600 border-red-200 hover:bg-red-50"
-                        onClick={() => {
-                          setSelectedCajero(cajero)
-                          setIsDeleteDialogOpen(true)
-                        }}
-                        title="Eliminar"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                          <Badge className="bg-emerald-100 text-emerald-700 text-xs mt-1">
+                            <DollarSign className="h-3 w-3 mr-1" />
+                            Caja
+                          </Badge>
+                        </div>
+                      </div>
 
-        {filteredCajeros.length === 0 && (
-          <div className="text-center py-12">
-            <Wallet className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-500">No se encontraron usuarios de caja</p>
-            <Button 
-              className="mt-4 bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => setIsDialogOpen(true)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Crear primer usuario de caja
-            </Button>
+                      <div className="mt-3">
+                        <UserNIPCard
+                          usuarioId={cajero.id}
+                          usuarioNombre={`${cajero.nombre} ${cajero.apellido}`}
+                          onNIPChange={fetchCajeros}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                        <div className="flex items-center gap-1">
+                          <Wallet className="h-4 w-4 text-gray-400" />
+                          <span className="text-sm text-gray-600">
+                            Usuario de caja
+                          </span>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                            onClick={() => handleOpenEdit(cajero)}
+                            title="Editar"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          {isActivo ? (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="text-red-600 border-red-200 hover:bg-red-50"
+                              onClick={() => handleDesactivar(cajero.id)}
+                              disabled={actionLoading === cajero.id}
+                              title="Desactivar"
+                            >
+                              <XCircle className="h-3 w-3" />
+                            </Button>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                              onClick={() => handleActivar(cajero.id)}
+                              disabled={actionLoading === cajero.id}
+                              title="Activar"
+                            >
+                              {actionLoading === cajero.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircle className="h-3 w-3" />
+                              )}
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => {
+                              setSelectedCajero(cajero)
+                              setIsDeleteDialogOpen(true)
+                            }}
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+
+            {filteredCajeros.length === 0 && (
+              <div className="text-center py-12">
+                <Wallet className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500">No se encontraron usuarios de caja</p>
+                <Button 
+                  className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => setIsDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear primer usuario de caja
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </TabsContent>
+
+        <TabsContent value="rendimiento" className="mt-0">
+          <div className="px-4 sm:px-6 lg:px-8 py-6">
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-emerald-600" />
+                Rendimiento de Caja
+              </h2>
+              <p className="text-sm text-gray-500">
+                Estadísticas de cobros y propinas por jornada
+              </p>
+            </div>
+            <RendimientoRolTab rol="caja" />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Modal de Editar */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
