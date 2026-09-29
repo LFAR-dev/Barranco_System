@@ -6,3 +6,8 @@ dist/
 # TypeScript incremental cache
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# Logs temporales
+*.log
+tsc-output.log
+build.log
