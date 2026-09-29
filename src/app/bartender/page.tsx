@@ -16,6 +16,8 @@ import { useToast } from '@/hooks/use-toast'
 import { createClient } from '@/lib/supabase/client'
 import { NotificationBell } from '@/components/bartender/NotificationBell'
 import { orderService } from '@/lib/services/orderService'
+import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
+import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
 import {
   Dialog,
   DialogContent,
@@ -30,6 +32,7 @@ export default function BartenderDashboard() {
   const router = useRouter()
   const { toast } = useToast()
   const supabase = createClient()
+  const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const [pedidos, setPedidos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMermaOpen, setIsMermaOpen] = useState(false)
@@ -138,7 +141,6 @@ export default function BartenderDashboard() {
 
   const handleMerma = async () => {
     try {
-      // Registrar merma
       const { error } = await supabase
         .from('mermas')
         .insert([{
@@ -189,7 +191,7 @@ export default function BartenderDashboard() {
     }
   }
 
-  if (loading) {
+  if (loading && pedidos.length === 0) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="flex flex-col items-center gap-4">
@@ -202,6 +204,8 @@ export default function BartenderDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <JornadaCerradaOverlay isOpen={!jornadaActiva && !jornadaLoading} />
+
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">

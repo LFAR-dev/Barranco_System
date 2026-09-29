@@ -11,11 +11,14 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useAuth } from '@/hooks/useAuth'
 import { orderService, Order } from '@/lib/services/orderService'
 import { useToast } from '@/hooks/use-toast'
+import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
+import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
 
 export default function MeseroDashboard() {
   const { user, logout } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
+  const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -63,7 +66,7 @@ export default function MeseroDashboard() {
     router.push('/')
   }
 
-  if (loading) {
+  if (loading && orders.length === 0) {
     return (
       <div className="flex justify-center items-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
@@ -77,6 +80,8 @@ export default function MeseroDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <JornadaCerradaOverlay isOpen={!jornadaActiva && !jornadaLoading} />
+
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">

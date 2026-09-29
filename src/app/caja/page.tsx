@@ -17,11 +17,14 @@ import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
 import { orderService, Order } from '@/lib/services/orderService'
 import { CancelOrderModal } from '@/components/caja/CancelOrderModal'
+import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
+import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
 
 export default function CajaDashboard() {
   const { user, loading: authLoading, logout } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
+  const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const [pedidos, setPedidos] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [pedidoToCancel, setPedidoToCancel] = useState<Order | null>(null)
@@ -154,7 +157,7 @@ export default function CajaDashboard() {
     }
   }
 
-  if (authLoading || loading) {
+  if (authLoading || (loading && pedidos.length === 0)) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="flex flex-col items-center gap-4">
@@ -173,6 +176,8 @@ export default function CajaDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <JornadaCerradaOverlay isOpen={!jornadaActiva && !jornadaLoading} />
+
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -219,7 +224,6 @@ export default function CajaDashboard() {
           </Link>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Card>
             <CardContent className="p-4">
@@ -331,7 +335,6 @@ export default function CajaDashboard() {
                           </span>
                         </div>
 
-                        {/* Items */}
                         <div className="flex flex-wrap gap-1 mb-3">
                           {pedido.items?.map((item: any, idx: number) => (
                             <span 
@@ -343,7 +346,6 @@ export default function CajaDashboard() {
                           ))}
                         </div>
 
-                        {/* Acciones */}
                         <div className="flex flex-wrap gap-2 pt-3 border-t">
                           {pedido.estado === 'listo' && (
                             <Button 
@@ -431,7 +433,6 @@ export default function CajaDashboard() {
         </div>
       </main>
 
-      {/* Modal de Cancelación */}
       <CancelOrderModal
         isOpen={isCancelModalOpen}
         onClose={() => {
