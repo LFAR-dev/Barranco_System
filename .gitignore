@@ -3,3 +3,6 @@ node_modules/
 .next/
 dist/
 .env*
+# TypeScript incremental cache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
