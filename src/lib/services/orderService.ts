@@ -323,4 +323,43 @@ export const orderService = {
     }
     return data
   }
+,
+  // ============================================================
+  // NOTIFICACIONES AL ADMIN (para AdminNotificationBell)
+  // ============================================================
+  async getNotificacionesAdmin(): Promise<any[]> {
+    const supabase = createClient()
+    try {
+      const { data, error } = await supabase
+        .from('notificaciones_admin')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) {
+        console.warn('⚠️ Tabla notificaciones_admin no disponible:', error.message)
+        return []
+      }
+      return data || []
+    } catch (e) {
+      console.warn('⚠️ Error al cargar notificaciones admin:', e)
+      return []
+    }
+  },
+
+  async marcarNotificacionAdminLeida(id: string): Promise<void> {
+    const supabase = createClient()
+    await supabase
+      .from('notificaciones_admin')
+      .update({ leida: true })
+      .eq('id', id)
+  },
+
+  async marcarTodasNotificacionesAdminLeidas(): Promise<void> {
+    const supabase = createClient()
+    await supabase
+      .from('notificaciones_admin')
+      .update({ leida: true })
+      .eq('leida', false)
+  }
 }
