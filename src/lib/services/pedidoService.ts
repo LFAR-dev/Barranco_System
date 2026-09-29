@@ -1,5 +1,13 @@
 import { createClient } from '@/lib/supabase/client'
 
+/**
+ * @deprecated
+ * Este servicio será eliminado en la próxima versión.
+ * Usar `orderService` en su lugar.
+ * 
+ * Motivo: había 3 servicios creando pedidos de 3 formas distintas.
+ * Se unifica todo en `orderService` para mantener consistencia.
+ */
 export interface Pedido {
   id: string
   mesero_id: string
@@ -15,7 +23,9 @@ export interface Pedido {
 }
 
 export const pedidoService = {
-  // Crear un nuevo pedido (mesero)
+  /**
+   * @deprecated Usar `orderService.createOrderConJornada` en su lugar.
+   */
   async crearPedido(data: {
     mesero_id: string
     mesa: string
@@ -39,7 +49,9 @@ export const pedidoService = {
     return pedido
   },
 
-  // Obtener pedidos pendientes (bartender)
+  /**
+   * @deprecated Usar `orderService.getOrdersByEstado('pendiente')` en su lugar.
+   */
   async getPedidosPendientes(): Promise<Pedido[]> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -55,7 +67,9 @@ export const pedidoService = {
     return data
   },
 
-  // Obtener pedidos de un bartender
+  /**
+   * @deprecated Usar `orderService.getOrdersByEstado()` con filtro local.
+   */
   async getPedidosByBartender(bartenderId: string): Promise<Pedido[]> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -71,7 +85,9 @@ export const pedidoService = {
     return data
   },
 
-  // Tomar un pedido (bartender)
+  /**
+   * @deprecated Usar `orderService.assignBartender` en su lugar.
+   */
   async tomarPedido(pedidoId: string, bartenderId: string): Promise<Pedido> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -89,7 +105,9 @@ export const pedidoService = {
     return data
   },
 
-  // Marcar pedido como listo (bartender)
+  /**
+   * @deprecated Usar `orderService.markReady` en su lugar.
+   */
   async marcarListo(pedidoId: string): Promise<Pedido> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -106,7 +124,9 @@ export const pedidoService = {
     return data
   },
 
-  // Marcar pedido como entregado (mesero)
+  /**
+   * @deprecated Usar `orderService.markServed` en su lugar.
+   */
   async marcarEntregado(pedidoId: string): Promise<Pedido> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -123,7 +143,9 @@ export const pedidoService = {
     return data
   },
 
-  // Obtener pedidos de un mesero
+  /**
+   * @deprecated Usar `orderService.getOrdersByEstado()` con filtro local.
+   */
   async getPedidosByMesero(meseroId: string): Promise<Pedido[]> {
     const supabase = createClient()
     const { data, error } = await supabase

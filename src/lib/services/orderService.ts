@@ -20,6 +20,15 @@ export interface Order {
   created_at: string
   updated_at: string
   venta_id?: string
+  jornada_id?: string
+}
+
+export interface CrearPedidoResult {
+  success: boolean
+  pedido_id: string
+  jornada_id: string
+  bartender_asignado_id: string | null
+  sin_bartender: boolean
 }
 
 export const orderService = {
@@ -41,6 +50,49 @@ export const orderService = {
     return data || []
   },
 
+  /**
+   * 🆕 Obtiene pedidos filtrados por jornada
+   */
+  async getOrdersByJornada(jornadaId: string, estado?: string): Promise<Order[]> {
+    const supabase = createClient()
+    let query = supabase
+      .from('pedidos')
+      .select(`
+        *,
+        mesero:usuarios!mesero_id(nombre, apellido),
+        bartender:bartenders!bartender_id(nombre_completo)
+      `)
+      .eq('jornada_id', jornadaId)
+      .order('created_at', { ascending: false })
+    
+    if (estado) query = query.eq('estado', estado)
+    
+    const { data, error } = await query
+    if (error) throw new Error('No se pudieron cargar los pedidos de la jornada')
+    return data || []
+  },
+
+  /**
+   * 🆕 Obtiene pedidos pendientes de la jornada activa
+   * (incluye pedidos antiguos NO resueltos para que no se pierdan)
+   */
+  async getPedidosPendientesSinPerder(jornadaId: string): Promise<Order[]> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select(`
+        *,
+        mesero:usuarios!mesero_id(nombre, apellido),
+        bartender:bartenders!bartender_id(nombre_completo)
+      `)
+      .in('estado', ['pendiente', 'preparando', 'listo'])
+      .or(`jornada_id.eq.${jornadaId},jornada_id.is.null`)
+      .order('created_at', { ascending: true })
+    
+    if (error) throw new Error('No se pudieron cargar los pedidos pendientes')
+    return data || []
+  },
+
   async getOrderById(id: string): Promise<Order | null> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -58,8 +110,13 @@ export const orderService = {
   },
 
   // ============================================================
-  // CREAR PEDIDO - Notifica al bartender
+  // MÉTODO EXISTENTE: createOrder (sin jornada, legacy)
   // ============================================================
+  
+  /**
+   * @deprecated Usar `createOrderConJornada` para nuevos pedidos.
+   * Este método se mantiene por compatibilidad con pantallas antiguas.
+   */
   async createOrder(order: {
     mesero_id: string
     mesa?: string
@@ -91,7 +148,6 @@ export const orderService = {
     if (error) throw new Error('No se pudo crear el pedido')
     if (!data) throw new Error('No se pudo crear el pedido')
 
-    // NOTIFICAR AL BARTENDER sobre el nuevo pedido
     try {
       await notificationService.notificarBartender({
         pedidoId: data.id,
@@ -100,6 +156,131 @@ export const orderService = {
       })
     } catch (e) {
       console.error('No se pudo notificar al bartender:', e)
+    }
+
+    return data as Order
+  },
+
+  // ============================================================
+  // 🆕 MÉTODO NUEVO: createOrderConJornada
+  // Crea pedido con jornada activa + bartender asignado (round-robin)
+  // ============================================================
+  
+  /**
+   * Crea un pedido asignándolo automáticamente a una jornada activa
+   * y a un bartender disponible (round-robin).
+   * 
+   * Requiere que exista una jornada activa. Si no hay, lanza error.
+   */
+  async createOrderConJornada(order: {
+    mesero_id: string
+    mesa?: string
+    items: OrderItem[]
+    total: number
+    notas?: string
+  }): Promise<Order> {
+    const supabase = createClient()
+    
+    if (!order.mesero_id) throw new Error('Se requiere un usuario para crear el pedido')
+    if (!order.items || order.items.length === 0) throw new Error('El pedido debe tener al menos un producto')
+    if (order.total <= 0) throw new Error('El total del pedido debe ser mayor a 0')
+
+    // Llamar a la RPC que crea el pedido con jornada + bartender asignado
+    const { data, error } = await supabase.rpc('crear_pedido_con_jornada', {
+      p_mesero_id: order.mesero_id,
+      p_mesa: order.mesa || 'Caja',
+      p_items: order.items,
+      p_total: order.total
+    })
+
+    if (error) {
+      console.error('Error al crear pedido con jornada:', error)
+      throw new Error(error.message || 'No se pudo crear el pedido')
+    }
+
+    const result = data as CrearPedidoResult
+
+    // Notificar al bartender asignado (si lo hay)
+    try {
+      if (result.sin_bartender) {
+        // No había bartenders disponibles → notificar al admin
+        await notificationService.notificarAdmin({
+          usuarioId: order.mesero_id,
+          pedidoId: result.pedido_id,
+          tipo: 'pedido_sin_bartender',
+          mensaje: `⚠️ Pedido de ${order.mesa || 'Caja'} sin bartender disponible. Asignar manualmente.`
+        })
+      } else {
+        await notificationService.notificarBartender({
+          bartenderId: result.bartender_asignado_id || undefined,
+          pedidoId: result.pedido_id,
+          tipo: 'nuevo_pedido',
+          mensaje: `📦 Nuevo pedido de ${order.mesa || 'Caja'} - ${order.items.length} items`
+        })
+      }
+    } catch (e) {
+      console.error('No se pudo notificar:', e)
+    }
+
+    // Cargar el pedido completo con sus relaciones
+    const pedidoCompleto = await this.getOrderById(result.pedido_id)
+    if (!pedidoCompleto) throw new Error('Pedido creado pero no se pudo recuperar')
+
+    return pedidoCompleto
+  },
+
+  // ============================================================
+  // 🆕 MÉTODO NUEVO: assignBartenderAutomatico
+  // Reasigna un pedido al siguiente bartender disponible
+  // ============================================================
+  
+  /**
+   * Reasigna un pedido al siguiente bartender disponible (round-robin).
+   * Útil para:
+   * - Cuando el bartender actual se desconecta
+   * - Cuando un pedido quedó sin asignar por falta de bartenders
+   */
+  async assignBartenderAutomatico(orderId: string): Promise<Order> {
+    const supabase = createClient()
+
+    // Llamar a la RPC para obtener el siguiente bartender
+    const { data: bartenderId, error: rpcError } = await supabase.rpc('asignar_siguiente_bartender')
+
+    if (rpcError) {
+      console.error('Error al asignar bartender:', rpcError)
+      throw new Error('No se pudo asignar bartender automáticamente')
+    }
+
+    if (!bartenderId) {
+      throw new Error('No hay bartenders disponibles en este momento')
+    }
+
+    // Actualizar el pedido con el bartender asignado
+    const { data, error } = await supabase
+      .from('pedidos')
+      .update({
+        bartender_id: bartenderId,
+        estado: 'preparando',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', orderId)
+      .select()
+      .maybeSingle()
+
+    if (error) throw new Error('No se pudo asignar el bartender al pedido')
+
+    // Notificar al mesero
+    if (data) {
+      try {
+        await notificationService.notificarMesero({
+          meseroId: data.mesero_id,
+          pedidoId: data.id,
+          tipo: 'pedido_en_preparacion',
+          mensaje: `👨‍🍳 Tu pedido de ${data.mesa || 'Caja'} está en preparación`
+        })
+      } catch (e) {
+        console.error('No se pudo notificar al mesero:', e)
+      }
     }
 
     return data as Order
@@ -121,9 +302,6 @@ export const orderService = {
     return data as Order
   },
 
-  // ============================================================
-  // BARTENDER ACEPTA PEDIDO
-  // ============================================================
   async assignBartender(orderId: string, bartenderId: string): Promise<Order> {
     const supabase = createClient()
     
@@ -140,7 +318,6 @@ export const orderService = {
 
     if (error) throw new Error('No se pudo asignar el bartender')
 
-    // Notificar al mesero que su pedido está en preparación
     if (data) {
       try {
         await notificationService.notificarMesero({
@@ -157,9 +334,6 @@ export const orderService = {
     return data as Order
   },
 
-  // ============================================================
-  // BARTENDER MARCA PEDIDO COMO LISTO
-  // ============================================================
   async markReady(orderId: string): Promise<Order> {
     const supabase = createClient()
     
@@ -172,7 +346,6 @@ export const orderService = {
 
     if (error) throw new Error('No se pudo marcar como listo')
 
-    // Notificar al mesero Y a caja que el pedido está listo
     if (data) {
       try {
         await notificationService.notificarMesero({
@@ -195,9 +368,6 @@ export const orderService = {
     return data as Order
   },
 
-  // ============================================================
-  // ENTREGAR PEDIDO - Descuenta stock automáticamente
-  // ============================================================
   async markServed(orderId: string): Promise<Order> {
     const supabase = createClient()
     
@@ -210,7 +380,6 @@ export const orderService = {
 
     if (error) throw new Error('No se pudo marcar como servido')
 
-    // Descontar stock automáticamente
     if (data) {
       try {
         const { data: userData } = await supabase.auth.getUser()
@@ -227,7 +396,6 @@ export const orderService = {
         if (descuentoError) {
           console.error('Error al descontar stock:', descuentoError)
         } else if (descuentoData) {
-          // Si hay productos agotados o bajos, notificar
           const agotados = descuentoData.productos_agotados || []
           const bajos = descuentoData.productos_bajos || []
 
@@ -246,9 +414,6 @@ export const orderService = {
     return data as Order
   },
 
-  // ============================================================
-  // CANCELAR PEDIDO - Restaura stock y notifica al admin
-  // ============================================================
   async cancelOrder(
     orderId: string, 
     motivo: string, 
@@ -265,7 +430,6 @@ export const orderService = {
     if (pedidoActual.estado === 'cancelado') throw new Error('Este pedido ya fue cancelado')
     if (pedidoActual.estado === 'servido') throw new Error('Este pedido ya fue cobrado')
 
-    // 1. Restaurar stock si el pedido estaba servido o en proceso
     if (pedidoActual.estado === 'listo') {
       try {
         await supabase.rpc('restaurar_stock_cancelacion', {
@@ -277,7 +441,6 @@ export const orderService = {
       }
     }
 
-    // 2. Actualizar estado
     const { data, error } = await supabase
       .from('pedidos')
       .update({ estado: 'cancelado', updated_at: new Date().toISOString() })
@@ -287,7 +450,6 @@ export const orderService = {
 
     if (error) throw new Error('No se pudo cancelar el pedido')
 
-    // 3. Notificar al admin con el motivo
     try {
       await notificationService.notificarAdmin({
         pedidoId: orderId,
@@ -309,9 +471,6 @@ export const orderService = {
     return { can: true }
   },
 
-  // ============================================================
-  // RENDIMIENTO DE PRODUCTOS (para gráfica)
-  // ============================================================
   async getRendimientoProducto(productoId: string): Promise<any> {
     const supabase = createClient()
     const { data, error } = await supabase.rpc('calcular_rendimiento_producto', {
@@ -322,11 +481,12 @@ export const orderService = {
       return null
     }
     return data
-  }
-,
+  },
+
   // ============================================================
-  // NOTIFICACIONES AL ADMIN (para AdminNotificationBell)
+  // NOTIFICACIONES AL ADMIN
   // ============================================================
+  
   async getNotificacionesAdmin(): Promise<any[]> {
     const supabase = createClient()
     try {

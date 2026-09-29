@@ -16,6 +16,10 @@ export interface Bartender {
   email?: string
   phone_number?: string
   avatar_url?: string
+  // 🆕 Campos nuevos para round-robin
+  disponible?: boolean
+  ultima_asignacion?: string | null
+  pedidos_activos_count?: number
 }
 
 export const bartenderService = {
@@ -138,5 +142,55 @@ export const bartenderService = {
       .from('barranco-images')
       .getPublicUrl(path)
     return urlData.publicUrl
+  },
+
+  // ============================================================
+  // 🆕 MÉTODOS NUEVOS: DISPONIBILIDAD Y ROUND-ROBIN
+  // ============================================================
+
+  /**
+   * Toggle disponibilidad de un bartender para recibir pedidos
+   */
+  async toggleDisponibilidad(bartenderId: string, disponible: boolean): Promise<void> {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('bartenders')
+      .update({
+        disponible,
+        // Reset al ponerse disponible para no quedar al final de la fila
+        ...(disponible ? { ultima_asignacion: null } : {})
+      })
+      .eq('id', bartenderId)
+
+    if (error) {
+      console.error('Error al cambiar disponibilidad:', error)
+      throw new Error('No se pudo cambiar la disponibilidad')
+    }
+  },
+
+  /**
+   * Obtiene solo los bartenders disponibles para recibir pedidos
+   */
+  async getDisponibles(): Promise<Bartender[]> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('bartenders')
+      .select('*')
+      .eq('activo', true)
+      .eq('disponible', true)
+      .order('ultima_asignacion', { ascending: true, nullsFirst: true })
+
+    if (error) throw error
+    return (data || []) as Bartender[]
+  },
+
+  /**
+   * Obtiene mi bartender (del usuario actual) con estado de disponibilidad
+   */
+  async getMiBartender(): Promise<Bartender | null> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+    return this.getByUsuarioId(user.id)
   }
 }

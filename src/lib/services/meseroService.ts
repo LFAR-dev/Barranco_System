@@ -14,6 +14,10 @@ export interface Mesero {
   email?: string
   phone_number?: string
   avatar_url?: string
+  // 🆕 Campos nuevos para round-robin
+  disponible?: boolean
+  ultima_asignacion?: string | null
+  mesas_activas_count?: number
 }
 
 export const meseroService = {
@@ -138,7 +142,10 @@ export const meseroService = {
     return urlData.publicUrl
   },
 
-  // Funciones para mesas y pedidos
+  // ============================================================
+  // MÉTODOS EXISTENTES (mesas y pedidos_activos)
+  // ============================================================
+  
   async getMesas(): Promise<any[]> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -176,6 +183,10 @@ export const meseroService = {
     return data
   },
 
+  /**
+   * @deprecated Usar `orderService.createOrderConJornada` en su lugar.
+   * Este método será eliminado en la próxima versión.
+   */
   async crearPedido(pedido: any): Promise<any> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -275,5 +286,54 @@ export const meseroService = {
         mensaje
       }])
     if (error) throw error
+  },
+
+  // ============================================================
+  // 🆕 MÉTODOS NUEVOS: DISPONIBILIDAD Y ROUND-ROBIN
+  // ============================================================
+
+  /**
+   * Toggle disponibilidad de un mesero para recibir mesas
+   */
+  async toggleDisponibilidad(meseroId: string, disponible: boolean): Promise<void> {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('meseros')
+      .update({
+        disponible,
+        ...(disponible ? { ultima_asignacion: null } : {})
+      })
+      .eq('id', meseroId)
+
+    if (error) {
+      console.error('Error al cambiar disponibilidad:', error)
+      throw new Error('No se pudo cambiar la disponibilidad')
+    }
+  },
+
+  /**
+   * Obtiene solo los meseros disponibles
+   */
+  async getDisponibles(): Promise<Mesero[]> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('meseros')
+      .select('*')
+      .eq('activo', true)
+      .eq('disponible', true)
+      .order('ultima_asignacion', { ascending: true, nullsFirst: true })
+
+    if (error) throw error
+    return (data || []) as Mesero[]
+  },
+
+  /**
+   * Obtiene mi mesero (del usuario actual)
+   */
+  async getMiMesero(): Promise<Mesero | null> {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+    return this.getByUsuarioId(user.id)
   }
 }
