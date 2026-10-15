@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Coffee, Clock, CheckCircle,
+  Coffee, Clock, CheckCircle, UserRound, MapPin,
   Loader2, TrendingUp, XCircle
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -314,93 +314,107 @@ export default function BartenderDashboard() {
                 </div>
               ) : (
                 <div className="space-y-3 sm:space-y-4">
-                  {pedidos.map((pedido) => (
-                    <div key={pedido.id} className="border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0 w-full sm:w-auto">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-base sm:text-lg">
-                              Mesa {pedido.mesa || 'N/A'}
-                            </span>
-                            <Badge className={`${getStatusColor(pedido.estado)} text-xs`}>
-                              {getStatusIcon(pedido.estado)}
-                              <span className="ml-1">{pedido.estado.toUpperCase()}</span>
-                            </Badge>
-                            <span className="text-xs text-gray-400">
-                              {new Date(pedido.created_at).toLocaleTimeString()}
-                            </span>
-                          </div>
-                          
-                          <div className="mt-2 space-y-1.5">
-                            {pedido.items?.map((item: any, idx: number) => (
-                              <div key={idx} className="flex justify-between items-center text-xs sm:text-sm text-gray-600 gap-2 bg-gray-50 rounded px-2 py-1">
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                  <span className="truncate">{item.nombre}</span>
-                                  <BotonReceta 
-                                    recetaId={item.receta_id} 
-                                    recetaNombre={item.nombre}
-                                    variant="icon"
-                                    size="sm"
-                                  />
-                                </div>
-                                <span className="font-medium shrink-0">x{item.cantidad}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                  {pedidos.map((pedido) => {
+                    const meseroNombre = pedido.mesero
+                      ? `${pedido.mesero.nombre || ''} ${pedido.mesero.apellido || ''}`.trim()
+                      : 'Sin asignar'
 
-                        <div className="flex flex-col items-end gap-2 shrink-0">
-                          <span className="font-bold text-base sm:text-lg text-orange-600">
-                            ${pedido.total?.toFixed(2) || '0.00'}
-                          </span>
-                          <div className="flex gap-1.5 flex-wrap justify-end">
-                            {pedido.estado === 'pendiente' && (
-                              <Button 
-                                size="sm" 
-                                disabled={!turnoActivo}
-                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
-                                onClick={() => actualizarEstado(pedido.id, 'preparando')}
-                              >
-                                <Coffee className="h-3 w-3 sm:mr-1" />
-                                <span className="hidden sm:inline">Preparar</span>
-                              </Button>
-                            )}
-                            {pedido.estado === 'preparando' && (
-                              <Button 
-                                size="sm" 
-                                disabled={!turnoActivo}
-                                className="bg-green-600 hover:bg-green-700 text-white text-xs"
-                                onClick={() => actualizarEstado(pedido.id, 'listo')}
-                              >
-                                <CheckCircle className="h-3 w-3 sm:mr-1" />
-                                <span className="hidden sm:inline">Listo</span>
-                              </Button>
-                            )}
-                            {pedido.estado === 'listo' && (
+                    return (
+                      <div key={pedido.id} className="border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0 w-full sm:w-auto">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-base sm:text-lg">
+                                Mesa {pedido.mesa || 'N/A'}
+                              </span>
+                              <Badge className={`${getStatusColor(pedido.estado)} text-xs`}>
+                                {getStatusIcon(pedido.estado)}
+                                <span className="ml-1">{pedido.estado.toUpperCase()}</span>
+                              </Badge>
+                              <span className="text-xs text-gray-400">
+                                {new Date(pedido.created_at).toLocaleTimeString()}
+                              </span>
+                            </div>
+
+                            {/* Info del mesero asignado y ubicación */}
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                              <span className="inline-flex items-center gap-1 text-orange-700 bg-orange-50 px-2 py-1 rounded-md border border-orange-200">
+                                <UserRound className="h-3 w-3" />
+                                <span className="font-medium">{meseroNombre}</span>
+                              </span>
+                            </div>
+                            
+                            <div className="mt-2 space-y-1.5">
+                              {pedido.items?.map((item: any, idx: number) => (
+                                <div key={idx} className="flex justify-between items-center text-xs sm:text-sm text-gray-600 gap-2 bg-gray-50 rounded px-2 py-1">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="truncate">{item.nombre}</span>
+                                    <BotonReceta 
+                                      recetaId={item.receta_id} 
+                                      recetaNombre={item.nombre}
+                                      variant="icon"
+                                      size="sm"
+                                    />
+                                  </div>
+                                  <span className="font-medium shrink-0">x{item.cantidad}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <span className="font-bold text-base sm:text-lg text-orange-600">
+                              ${pedido.total?.toFixed(2) || '0.00'}
+                            </span>
+                            <div className="flex gap-1.5 flex-wrap justify-end">
+                              {pedido.estado === 'pendiente' && (
+                                <Button 
+                                  size="sm" 
+                                  disabled={!turnoActivo}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                                  onClick={() => actualizarEstado(pedido.id, 'preparando')}
+                                >
+                                  <Coffee className="h-3 w-3 sm:mr-1" />
+                                  <span className="hidden sm:inline">Preparar</span>
+                                </Button>
+                              )}
+                              {pedido.estado === 'preparando' && (
+                                <Button 
+                                  size="sm" 
+                                  disabled={!turnoActivo}
+                                  className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                  onClick={() => actualizarEstado(pedido.id, 'listo')}
+                                >
+                                  <CheckCircle className="h-3 w-3 sm:mr-1" />
+                                  <span className="hidden sm:inline">Listo</span>
+                                </Button>
+                              )}
+                              {pedido.estado === 'listo' && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  disabled={!turnoActivo}
+                                  className="text-gray-600 text-xs"
+                                  onClick={() => actualizarEstado(pedido.id, 'servido')}
+                                >
+                                  Servido
+                                </Button>
+                              )}
                               <Button 
                                 size="sm" 
                                 variant="outline"
                                 disabled={!turnoActivo}
-                                className="text-gray-600 text-xs"
-                                onClick={() => actualizarEstado(pedido.id, 'servido')}
+                                className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
+                                onClick={() => actualizarEstado(pedido.id, 'cancelado')}
                               >
-                                Servido
+                                <XCircle className="h-3 w-3" />
                               </Button>
-                            )}
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              disabled={!turnoActivo}
-                              className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
-                              onClick={() => actualizarEstado(pedido.id, 'cancelado')}
-                            >
-                              <XCircle className="h-3 w-3" />
-                            </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
