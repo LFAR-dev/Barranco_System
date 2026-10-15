@@ -2,26 +2,54 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  LayoutDashboard, UserCog, Users, Wallet, DollarSign,
+  Package, ClipboardList, ShieldAlert, ShoppingCart, Table
+} from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { ToastContainer } from '@/components/ui/toast-container'
 import { EditProfileModal } from '@/components/admin/EditProfileModal'
 import { AdminNotificationBell } from '@/components/admin/AdminNotificationBell'
 import { JornadaButton } from '@/components/admin/jornada/JornadaButton'
-import { HeaderRol } from '@/components/layout/HeaderRol'
+import { AppShell } from '@/components/layout/AppShell'
+import { UserMenu } from '@/components/layout/UserMenu'
+import { SidebarSection } from '@/components/layout/AppSidebar'
 import { Button } from '@/components/ui/button'
-import { Loader2, ShieldAlert } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
-const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/admin' },
-  { label: 'Bartenders', href: '/admin/bartenders' },
-  { label: 'Meseros', href: '/admin/meseros' },
-  { label: 'Caja', href: '/admin/caja', highlight: true, color: 'emerald' as const },
-  { label: 'Cajas Físicas', href: '/admin/cajas' },
-  { label: 'Usuarios', href: '/admin/users' },
-  { label: 'Inventario', href: '/admin/inventory' },
-  { label: 'Recetas', href: '/admin/recipes' },
-  { label: 'Auditoría', href: '/admin/auditoria', highlight: true, color: 'purple' as const },
+const SECTIONS: SidebarSection[] = [
+  {
+    title: 'Operación',
+    items: [
+      { label: 'Dashboard', href: '/admin', icon: <LayoutDashboard className="h-4 w-4" /> },
+      { label: 'Ventas', href: '/admin/sales', icon: <DollarSign className="h-4 w-4" /> },
+      { label: 'Cajas Físicas', href: '/admin/cajas', icon: <Wallet className="h-4 w-4" /> },
+    ]
+  },
+  {
+    title: 'Equipo',
+    items: [
+      { label: 'Bartenders', href: '/admin/bartenders', icon: <UserCog className="h-4 w-4" /> },
+      { label: 'Meseros', href: '/admin/meseros', icon: <Users className="h-4 w-4" /> },
+      { label: 'Caja', href: '/admin/caja', icon: <Wallet className="h-4 w-4" />, highlight: true, color: 'emerald' },
+      { label: 'Usuarios', href: '/admin/users', icon: <Users className="h-4 w-4" /> },
+    ]
+  },
+  {
+    title: 'Recursos',
+    items: [
+      { label: 'Inventario', href: '/admin/inventory', icon: <Package className="h-4 w-4" /> },
+      { label: 'Recetas', href: '/admin/recipes', icon: <ClipboardList className="h-4 w-4" /> },
+      { label: 'Mesas', href: '/admin/mesas', icon: <Table className="h-4 w-4" /> },
+    ]
+  },
+  {
+    title: 'Supervisión',
+    items: [
+      { label: 'Auditoría', href: '/admin/auditoria', icon: <ShieldAlert className="h-4 w-4" />, highlight: true, color: 'purple' },
+    ]
+  }
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -49,7 +77,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const handleJornadaDesdeAvatar = () => {
-    // Emitir evento que JornadaButton escucha para abrir su modal
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('jornada:abrir-modal-desde-avatar'))
     }
@@ -83,18 +110,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50">
-        <HeaderRol
-          rol="admin"
-          navItems={NAV_ITEMS}
-          onLogout={handleLogout}
-          onEditProfile={() => setIsProfileOpen(true)}
-          onJornadaClick={handleJornadaDesdeAvatar}
-        >
-          <AdminNotificationBell />
-        </HeaderRol>
-        <div className="relative">{children}</div>
-      </div>
+      <AppShell
+        rol="admin"
+        sections={SECTIONS}
+        headerRight={
+          <>
+            <AdminNotificationBell />
+            <UserMenu
+              rol="admin"
+              onLogout={handleLogout}
+              onEditProfile={() => setIsProfileOpen(true)}
+              onJornadaClick={handleJornadaDesdeAvatar}
+            />
+          </>
+        }
+      >
+        {children}
+      </AppShell>
+
       <ToastContainer />
       <EditProfileModal
         isOpen={isProfileOpen}
@@ -102,7 +135,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         user={user}
         onUpdate={() => {}}
       />
-      {/* JornadaButton invisible que maneja los modales de jornada */}
       <div className="hidden">
         <JornadaButton />
       </div>
