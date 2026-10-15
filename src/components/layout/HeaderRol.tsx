@@ -403,7 +403,7 @@ export function HeaderRol({
 
               <button
                 onClick={() => setIsMenuOpen(true)}
-                className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="xl:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 aria-label="Abrir menú"
               >
                 <Menu className="h-5 w-5 text-gray-700" />
