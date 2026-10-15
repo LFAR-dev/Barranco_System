@@ -15,7 +15,9 @@ import { useToast } from '@/hooks/use-toast'
 import { orderService, Order } from '@/lib/services/orderService'
 import { CancelOrderModal } from '@/components/caja/CancelOrderModal'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
+import { useTurnoActivo } from '@/hooks/useTurnoActivo'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
+import { AvisoNoActivo } from '@/components/shared/AvisoNoActivo'
 import { EstadoSesionCaja } from '@/components/caja/EstadoSesionCaja'
 import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
 import { AppShell } from '@/components/layout/AppShell'
@@ -37,6 +39,7 @@ export default function CajaDashboard() {
   const router = useRouter()
   const { toast } = useToast()
   const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
+  const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
   const [pedidos, setPedidos] = useState<Order[]>([])
   const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -110,6 +113,15 @@ export default function CajaDashboard() {
   }
 
   const handleCobrarPedido = async (pedidoId: string, mesa?: string) => {
+    if (!turnoActivo) {
+      toast({
+        title: '⚠️ No estás activo',
+        description: 'El administrador debe activarte en el turno para cobrar',
+        variant: 'destructive'
+      })
+      return
+    }
+
     try {
       await orderService.markServed(pedidoId)
       toast({
@@ -128,6 +140,15 @@ export default function CajaDashboard() {
   }
 
   const handleOpenCancelModal = (pedido: Order) => {
+    if (!turnoActivo) {
+      toast({
+        title: '⚠️ No estás activo',
+        description: 'No puedes cancelar pedidos sin estar activo en el turno',
+        variant: 'destructive'
+      })
+      return
+    }
+
     const canCancel = orderService.canCancelOrder(pedido)
     if (!canCancel.can) {
       toast({
@@ -192,6 +213,14 @@ export default function CajaDashboard() {
     <div className="min-h-screen bg-gray-50">
       <JornadaCerradaOverlay isOpen={!jornadaActiva && !jornadaLoading} />
 
+      {!turnoLoading && turnoActivo === false && (
+        <AvisoNoActivo
+          rolLabel="caja"
+          onRecargar={recargarTurno}
+          onSalir={() => setIsSalirTurnoOpen(true)}
+        />
+      )}
+
       <AppShell
         rol="caja"
         sections={SECTIONS}
@@ -222,13 +251,21 @@ export default function CajaDashboard() {
               </h1>
               <p className="text-sm text-gray-500">Gestiona cobros y pedidos desde caja</p>
             </div>
-            <Link href="/caja/pos">
-              <Button className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
+            {turnoActivo ? (
+              <Link href="/caja/pos">
+                <Button className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
+                  <Plus className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Nuevo Pedido</span>
+                  <span className="sm:hidden">Nuevo</span>
+                </Button>
+              </Link>
+            ) : (
+              <Button disabled className="bg-gray-300 text-gray-500 shrink-0 cursor-not-allowed">
                 <Plus className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Nuevo Pedido</span>
                 <span className="sm:hidden">Nuevo</span>
               </Button>
-            </Link>
+            )}
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-4 sm:mb-6">
@@ -303,12 +340,14 @@ export default function CajaDashboard() {
                       <CheckCircle className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-3 text-gray-300" />
                       <p className="font-medium text-base sm:text-lg">No hay pedidos activos</p>
                       <p className="text-sm mt-1">Todos los pedidos han sido cobrados</p>
-                      <Link href="/caja/pos">
-                        <Button className="mt-4 bg-emerald-600 hover:bg-emerald-700">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Crear nuevo pedido
-                        </Button>
-                      </Link>
+                      {turnoActivo && (
+                        <Link href="/caja/pos">
+                          <Button className="mt-4 bg-emerald-600 hover:bg-emerald-700">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Crear nuevo pedido
+                          </Button>
+                        </Link>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -350,6 +389,7 @@ export default function CajaDashboard() {
                             {pedido.estado === 'listo' && (
                               <Button
                                 size="sm"
+                                disabled={!turnoActivo}
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 min-w-[120px]"
                                 onClick={() => handleCobrarPedido(pedido.id, pedido.mesa)}
                               >
@@ -371,6 +411,7 @@ export default function CajaDashboard() {
                             <Button
                               size="sm"
                               variant="outline"
+                              disabled={!turnoActivo}
                               className="text-red-600 border-red-200 hover:bg-red-50 flex-1 min-w-[100px]"
                               onClick={() => handleOpenCancelModal(pedido)}
                             >

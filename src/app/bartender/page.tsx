@@ -15,7 +15,9 @@ import { createClient } from '@/lib/supabase/client'
 import { NotificationBell } from '@/components/bartender/NotificationBell'
 import { orderService } from '@/lib/services/orderService'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
+import { useTurnoActivo } from '@/hooks/useTurnoActivo'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
+import { AvisoNoActivo } from '@/components/shared/AvisoNoActivo'
 import { ToggleDisponibilidad } from '@/components/shared/ToggleDisponibilidad'
 import { BotonReceta } from '@/components/shared/BotonReceta'
 import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
@@ -46,6 +48,7 @@ export default function BartenderDashboard() {
   const { toast } = useToast()
   const supabase = createClient()
   const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
+  const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
   const [pedidos, setPedidos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMermaOpen, setIsMermaOpen] = useState(false)
@@ -93,6 +96,15 @@ export default function BartenderDashboard() {
   }
 
   const actualizarEstado = async (pedidoId: string, nuevoEstado: "pendiente" | "preparando" | "listo" | "servido" | "cancelado") => {
+    if (!turnoActivo) {
+      toast({
+        title: '⚠️ No estás activo',
+        description: 'El administrador debe activarte en el turno para poder operar',
+        variant: 'destructive'
+      })
+      return
+    }
+
     try {
       await orderService.updateOrder(pedidoId, { estado: nuevoEstado })
       const pedido = pedidos.find(p => p.id === pedidoId)
@@ -114,6 +126,15 @@ export default function BartenderDashboard() {
   }
 
   const handleMerma = async () => {
+    if (!turnoActivo) {
+      toast({
+        title: '⚠️ No estás activo',
+        description: 'No puedes registrar mermas sin estar activo en el turno',
+        variant: 'destructive'
+      })
+      return
+    }
+
     try {
       const { error } = await supabase
         .from('mermas')
@@ -170,6 +191,14 @@ export default function BartenderDashboard() {
     <div className="min-h-screen bg-gray-50">
       <JornadaCerradaOverlay isOpen={!jornadaActiva && !jornadaLoading} />
 
+      {!turnoLoading && turnoActivo === false && (
+        <AvisoNoActivo
+          rolLabel="bartender"
+          onRecargar={recargarTurno}
+          onSalir={() => setIsSalirTurnoOpen(true)}
+        />
+      )}
+
       <AppShell
         rol="bartender"
         sections={SECTIONS}
@@ -187,6 +216,7 @@ export default function BartenderDashboard() {
               size="sm" 
               className="text-red-600 border-red-200 hover:bg-red-50 whitespace-nowrap hidden sm:flex"
               onClick={() => setIsMermaOpen(true)}
+              disabled={!turnoActivo}
             >
               <TrendingUp className="h-4 w-4 sm:mr-1" />
               <span className="hidden md:inline">Merma</span>
@@ -327,6 +357,7 @@ export default function BartenderDashboard() {
                             {pedido.estado === 'pendiente' && (
                               <Button 
                                 size="sm" 
+                                disabled={!turnoActivo}
                                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
                                 onClick={() => actualizarEstado(pedido.id, 'preparando')}
                               >
@@ -337,6 +368,7 @@ export default function BartenderDashboard() {
                             {pedido.estado === 'preparando' && (
                               <Button 
                                 size="sm" 
+                                disabled={!turnoActivo}
                                 className="bg-green-600 hover:bg-green-700 text-white text-xs"
                                 onClick={() => actualizarEstado(pedido.id, 'listo')}
                               >
@@ -348,6 +380,7 @@ export default function BartenderDashboard() {
                               <Button 
                                 size="sm" 
                                 variant="outline"
+                                disabled={!turnoActivo}
                                 className="text-gray-600 text-xs"
                                 onClick={() => actualizarEstado(pedido.id, 'servido')}
                               >
@@ -357,6 +390,7 @@ export default function BartenderDashboard() {
                             <Button 
                               size="sm" 
                               variant="outline"
+                              disabled={!turnoActivo}
                               className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
                               onClick={() => actualizarEstado(pedido.id, 'cancelado')}
                             >
@@ -411,7 +445,7 @@ export default function BartenderDashboard() {
                 onChange={(e) => setMermaData({ ...mermaData, motivo: e.target.value })}
               />
             </div>
-            <Button className="w-full bg-red-600 hover:bg-red-700" onClick={handleMerma}>
+            <Button className="w-full bg-red-600 hover:bg-red-700" onClick={handleMerma} disabled={!turnoActivo}>
               Registrar Merma
             </Button>
           </div>

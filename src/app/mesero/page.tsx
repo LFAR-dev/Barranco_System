@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Coffee, Clock, CheckCircle, Loader2 } from 'lucide-react'
+import { Plus, Coffee, Clock, CheckCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,13 +11,14 @@ import { useAuth } from '@/hooks/useAuth'
 import { orderService, Order } from '@/lib/services/orderService'
 import { useToast } from '@/hooks/use-toast'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
+import { useTurnoActivo } from '@/hooks/useTurnoActivo'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
+import { AvisoNoActivo } from '@/components/shared/AvisoNoActivo'
 import { ToggleDisponibilidad } from '@/components/shared/ToggleDisponibilidad'
 import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
 import { AppShell } from '@/components/layout/AppShell'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { SidebarSection } from '@/components/layout/AppSidebar'
-import { orderService as svc } from '@/lib/services/orderService'
 
 const SECTIONS: SidebarSection[] = [
   {
@@ -34,6 +35,7 @@ export default function MeseroDashboard() {
   const router = useRouter()
   const { toast } = useToast()
   const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
+  const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
   const [orders, setOrders] = useState<Order[]>([])
   const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -100,6 +102,14 @@ export default function MeseroDashboard() {
     <div className="min-h-screen bg-gray-50">
       <JornadaCerradaOverlay isOpen={!jornadaActiva && !jornadaLoading} />
 
+      {!turnoLoading && turnoActivo === false && (
+        <AvisoNoActivo
+          rolLabel="mesero"
+          onRecargar={recargarTurno}
+          onSalir={() => setIsSalirTurnoOpen(true)}
+        />
+      )}
+
       <AppShell
         rol="mesero"
         sections={SECTIONS}
@@ -127,13 +137,21 @@ export default function MeseroDashboard() {
               </h1>
               <p className="text-sm text-gray-500">Gestiona pedidos y toma órdenes</p>
             </div>
-            <Link href="/mesero/orders/new">
-              <Button className="bg-orange-600 hover:bg-orange-700 shrink-0">
+            {turnoActivo ? (
+              <Link href="/mesero/orders/new">
+                <Button className="bg-orange-600 hover:bg-orange-700 shrink-0">
+                  <Plus className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Nuevo Pedido</span>
+                  <span className="sm:hidden">Nuevo</span>
+                </Button>
+              </Link>
+            ) : (
+              <Button disabled className="bg-gray-300 text-gray-500 shrink-0 cursor-not-allowed">
                 <Plus className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Nuevo Pedido</span>
                 <span className="sm:hidden">Nuevo</span>
               </Button>
-            </Link>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
