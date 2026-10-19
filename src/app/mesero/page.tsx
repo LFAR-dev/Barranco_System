@@ -19,6 +19,7 @@ import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
 import { AppShell } from '@/components/layout/AppShell'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { SidebarSection } from '@/components/layout/AppSidebar'
+import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
 
 const SECTIONS: SidebarSection[] = [
   {
@@ -129,6 +130,7 @@ export default function MeseroDashboard() {
         sidebarHeaderSlot={user?.id ? <ToggleDisponibilidad rol="mesero" usuarioId={user.id} /> : null}
         headerRight={
           <>
+          <NotificationBellUniversal rol="mesero" usuarioId={user?.id || ''} />
             {user?.id && (
               <div className="hidden lg:block">
                 <ToggleDisponibilidad rol="mesero" usuarioId={user.id} />

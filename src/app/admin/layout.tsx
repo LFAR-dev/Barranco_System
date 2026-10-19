@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   LayoutDashboard, UserCog, Users, Wallet, DollarSign,
-  Package, ClipboardList, ShieldAlert, ShoppingCart, Table
+  Package, ClipboardList, ShieldAlert, Table
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { ToastContainer } from '@/components/ui/toast-container'
 import { EditProfileModal } from '@/components/admin/EditProfileModal'
-import { AdminNotificationBell } from '@/components/admin/AdminNotificationBell'
+import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
 import { JornadaButton } from '@/components/admin/jornada/JornadaButton'
 import { AppShell } from '@/components/layout/AppShell'
 import { UserMenu } from '@/components/layout/UserMenu'
@@ -115,7 +115,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         sections={SECTIONS}
         headerRight={
           <>
-            <AdminNotificationBell />
+            <NotificationBellUniversal rol="admin" usuarioId={user.id} />
             <UserMenu
               rol="admin"
               onLogout={handleLogout}

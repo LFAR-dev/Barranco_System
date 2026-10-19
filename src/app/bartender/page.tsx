@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
 import { createClient } from '@/lib/supabase/client'
-import { NotificationBell } from '@/components/bartender/NotificationBell'
+import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
 import { orderService } from '@/lib/services/orderService'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { useTurnoActivo } from '@/hooks/useTurnoActivo'
@@ -210,7 +210,7 @@ export default function BartenderDashboard() {
                 <ToggleDisponibilidad rol="bartender" usuarioId={user.id} />
               </div>
             )}
-            <NotificationBell bartenderId={user?.id || ''} />
+             <NotificationBellUniversal rol="bartender" usuarioId={user?.id || ''} />
             <Button 
               variant="outline" 
               size="sm" 

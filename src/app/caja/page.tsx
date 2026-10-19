@@ -23,6 +23,7 @@ import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
 import { AppShell } from '@/components/layout/AppShell'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { SidebarSection } from '@/components/layout/AppSidebar'
+import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
 
 const SECTIONS: SidebarSection[] = [
   {
@@ -227,14 +228,7 @@ export default function CajaDashboard() {
         sidebarHeaderSlot={<EstadoSesionCaja onSesionChange={setSesionActiva} />}
         headerRight={
           <>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              {stats.pendientes > 0 && (
-                <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
-                  {stats.pendientes}
-                </span>
-              )}
-            </Button>
+            <NotificationBellUniversal rol="caja" usuarioId={user?.id || ''} />
             <UserMenu
               rol="caja"
               onLogout={handleLogout}

@@ -21,7 +21,7 @@ export const notificationService = {
   
   async notificarBartender(data: {
     bartenderId?: string
-    pedidoId: string
+    pedidoId?: string
     tipo: string
     mensaje: string
   }): Promise<void> {
@@ -31,7 +31,7 @@ export const notificationService = {
       .from('notificaciones_bartender')
       .insert([{
         bartender_id: data.bartenderId || null,
-        pedido_id: data.pedidoId,
+        pedido_id: data.pedidoId || null,
         tipo: data.tipo,
         mensaje: data.mensaje,
         leida: false
@@ -39,7 +39,6 @@ export const notificationService = {
     
     if (error) {
       console.error('Error al notificar bartender:', error)
-      throw new Error('No se pudo enviar la notificación al bartender')
     }
   },
 
@@ -60,10 +59,7 @@ export const notificationService = {
     }
     
     const { data, error } = await query
-    if (error) {
-      console.error('Error:', error)
-      return []
-    }
+    if (error) return []
     return data || []
   },
 
@@ -81,10 +77,11 @@ export const notificationService = {
 
   async notificarMesero(data: {
     meseroId: string
-    pedidoId: string
+    pedidoId?: string
     tipo: string
     mensaje: string
     mesaId?: string
+    motivo?: string
   }): Promise<void> {
     const supabase = createClient()
     
@@ -92,16 +89,16 @@ export const notificationService = {
       .from('notificaciones_mesero')
       .insert([{
         mesero_id: data.meseroId,
-        pedido_id: data.pedidoId,
+        pedido_id: data.pedidoId || null,
         mesa_id: data.mesaId || null,
         tipo: data.tipo,
         mensaje: data.mensaje,
+        motivo: data.motivo || null,
         leida: false
       }])
     
     if (error) {
       console.error('Error al notificar mesero:', error)
-      throw new Error('No se pudo enviar la notificación al mesero')
     }
   },
 
@@ -123,10 +120,7 @@ export const notificationService = {
     }
     
     const { data, error } = await query
-    if (error) {
-      console.error('Error:', error)
-      return []
-    }
+    if (error) return []
     return data || []
   },
 
@@ -144,9 +138,10 @@ export const notificationService = {
 
   async notificarCaja(data: {
     cajaId?: string
-    pedidoId: string
+    pedidoId?: string
     tipo: string
     mensaje: string
+    motivo?: string
   }): Promise<void> {
     const supabase = createClient()
     
@@ -154,15 +149,15 @@ export const notificationService = {
       .from('notificaciones_caja')
       .insert([{
         caja_id: data.cajaId || null,
-        pedido_id: data.pedidoId,
+        pedido_id: data.pedidoId || null,
         tipo: data.tipo,
         mensaje: data.mensaje,
+        motivo: data.motivo || null,
         leida: false
       }])
     
     if (error) {
       console.error('Error al notificar caja:', error)
-      throw new Error('No se pudo enviar la notificación a caja')
     }
   },
 
@@ -183,10 +178,7 @@ export const notificationService = {
     }
     
     const { data, error } = await query
-    if (error) {
-      console.error('Error:', error)
-      return []
-    }
+    if (error) return []
     return data || []
   },
 
@@ -199,12 +191,12 @@ export const notificationService = {
   },
 
   // ============================================================
-  // NOTIFICACIONES AL ADMIN (Cancelaciones, Stock bajo, etc.)
+  // NOTIFICACIONES AL ADMIN
   // ============================================================
 
   async notificarAdmin(data: {
     pedidoId?: string
-    usuarioId: string
+    usuarioId?: string
     tipo: string
     mensaje: string
     motivo?: string
@@ -215,7 +207,7 @@ export const notificationService = {
       .from('notificaciones_admin')
       .insert([{
         pedido_id: data.pedidoId || null,
-        usuario_id: data.usuarioId,
+        usuario_id: data.usuarioId || null,
         tipo: data.tipo,
         mensaje: data.mensaje,
         motivo: data.motivo || null,
@@ -228,7 +220,7 @@ export const notificationService = {
   },
 
   // ============================================================
-  // NOTIFICACIÓN ESPECIAL: Stock agotado/bajo
+  // STOCK BAJO / AGOTADO
   // ============================================================
 
   async notificarStockBajo(producto: any, stockActual: number): Promise<void> {
@@ -240,7 +232,14 @@ export const notificationService = {
       ? `🚨 PRODUCTO AGOTADO: ${producto.nombre}`
       : `⚠️ Stock bajo: ${producto.nombre} (${stockActual} restantes)`
 
-    // 1. Obtener todos los bartenders, meseros y caja activos
+    // Notificar al admin
+    await this.notificarAdmin({
+      tipo: tipo,
+      mensaje: mensaje,
+      motivo: `Stock actual: ${stockActual}`
+    })
+
+    // Obtener usuarios activos
     const { data: usuarios } = await supabase
       .from('usuarios')
       .select('id, rol')
@@ -249,45 +248,38 @@ export const notificationService = {
 
     if (!usuarios || usuarios.length === 0) return
 
-    // 2. Notificar al admin (siempre)
-    await this.notificarAdmin({
-      usuarioId: '00000000-0000-0000-0000-000000000000',
+    // Notificar a bartenders (sin asignar a uno específico)
+    await supabase.from('notificaciones_bartender').insert([{
+      bartender_id: null,
       tipo: tipo,
       mensaje: mensaje,
-      motivo: `Stock actual: ${stockActual}`
-    })
+      leida: false
+    }])
 
-    // 3. Notificar a bartenders
-    const bartenders = usuarios.filter(u => u.rol === 'bartender')
-    for (const b of bartenders) {
-      await supabase.from('notificaciones_bartender').insert([{
-        bartender_id: null,
-        tipo: tipo,
-        mensaje: mensaje,
-        leida: false
-      }])
-    }
-
-    // 4. Notificar a meseros
+    // Notificar a meseros
     const meseros = usuarios.filter(u => u.rol === 'mesero')
-    for (const m of meseros) {
-      await supabase.from('notificaciones_mesero').insert([{
-        mesero_id: m.id,
-        tipo: tipo,
-        mensaje: mensaje,
-        leida: false
-      }])
+    if (meseros.length > 0) {
+      await supabase.from('notificaciones_mesero').insert(
+        meseros.map(m => ({
+          mesero_id: m.id,
+          tipo: tipo,
+          mensaje: mensaje,
+          leida: false
+        }))
+      )
     }
 
-    // 5. Notificar a caja
+    // Notificar a cajas
     const cajas = usuarios.filter(u => u.rol === 'caja')
-    for (const c of cajas) {
-      await supabase.from('notificaciones_caja').insert([{
-        caja_id: c.id,
-        tipo: tipo,
-        mensaje: mensaje,
-        leida: false
-      }])
+    if (cajas.length > 0) {
+      await supabase.from('notificaciones_caja').insert(
+        cajas.map(c => ({
+          caja_id: c.id,
+          tipo: tipo,
+          mensaje: mensaje,
+          leida: false
+        }))
+      )
     }
   }
 }

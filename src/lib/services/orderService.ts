@@ -392,12 +392,39 @@ export const orderService = {
         } else if (descuentoData) {
           const agotados = descuentoData.productos_agotados || []
           const bajos = descuentoData.productos_bajos || []
-
           for (const producto of agotados) {
             await notificationService.notificarStockBajo({ nombre: producto }, 0)
           }
           for (const producto of bajos) {
             await notificationService.notificarStockBajo({ nombre: producto }, 1)
+          }
+        }
+
+        // 🆕 Notificar al mesero que su pedido fue cobrado
+        if (data.mesero_id) {
+          try {
+            await notificationService.notificarMesero({
+              meseroId: data.mesero_id,
+              pedidoId: data.id,
+              tipo: 'pedido_cobrado',
+              mensaje: `💰 Pedido de ${data.mesa || 'Caja'} cobrado: $${(data.total || 0).toFixed(2)}`
+            })
+          } catch (e) {
+            console.error('No se pudo notificar al mesero del cobro:', e)
+          }
+        }
+
+        // 🆕 Notificar al bartender si lo hubo
+        if (data.bartender_id) {
+          try {
+            await notificationService.notificarBartender({
+              bartenderId: data.bartender_id,
+              pedidoId: data.id,
+              tipo: 'pedido_cobrado',
+              mensaje: `💰 Pedido de ${data.mesa || 'Caja'} cobrado`
+            })
+          } catch (e) {
+            console.error('No se pudo notificar al bartender del cobro:', e)
           }
         }
       } catch (e) {
@@ -444,6 +471,7 @@ export const orderService = {
 
     if (error) throw new Error('No se pudo cancelar el pedido')
 
+        // Notificar al admin
     try {
       await notificationService.notificarAdmin({
         pedidoId: orderId,
@@ -454,6 +482,35 @@ export const orderService = {
       })
     } catch (e) {
       console.error('No se pudo notificar al admin:', e)
+    }
+
+    // 🆕 Notificar al mesero asignado
+    if (pedidoActual.mesero_id && pedidoActual.mesero_id !== canceladoPor) {
+      try {
+        await notificationService.notificarMesero({
+          meseroId: pedidoActual.mesero_id,
+          pedidoId: orderId,
+          tipo: 'pedido_cancelado',
+          mensaje: `❌ Pedido de ${pedidoActual.mesa || 'Caja'} cancelado`,
+          motivo: motivo
+        })
+      } catch (e) {
+        console.error('No se pudo notificar al mesero:', e)
+      }
+    }
+
+    // 🆕 Notificar al bartender asignado
+    if (pedidoActual.bartender_id) {
+      try {
+        await notificationService.notificarBartender({
+          bartenderId: pedidoActual.bartender_id,
+          pedidoId: orderId,
+          tipo: 'pedido_cancelado',
+          mensaje: `❌ Pedido de ${pedidoActual.mesa || 'Caja'} cancelado`
+        })
+      } catch (e) {
+        console.error('No se pudo notificar al bartender:', e)
+      }
     }
 
     return data as Order
