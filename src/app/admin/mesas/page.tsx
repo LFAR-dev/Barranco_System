@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, RefreshCw, LayoutGrid, List, MousePointer2, Save } from 'lucide-react'
+import {
+  ArrowLeft, Plus, RefreshCw, LayoutGrid, List,
+  MousePointer2, Grid3x3
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,7 +19,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
 import { mesaService, Mesa, CategoriaMesa } from '@/lib/services/mesaService'
-import { MapaMesas } from '@/components/mesas/MapaMesas'
+import { MapaMesasZoom } from '@/components/mesas/MapaMesasZoom'
 import { MesaDetalleModal } from '@/components/mesas/MesaDetalleModal'
 
 export default function MesasPage() {
@@ -25,6 +28,7 @@ export default function MesasPage() {
   const [mesas, setMesas] = useState<Mesa[]>([])
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
+  const [showGrid, setShowGrid] = useState(false)
   
   const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
   const [isDetalleOpen, setIsDetalleOpen] = useState(false)
@@ -130,9 +134,19 @@ export default function MesasPage() {
               className={isEditing ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
             >
               <MousePointer2 className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{isEditing ? 'Guardar Vista' : 'Modo Edición'}</span>
-              <span className="sm:hidden">{isEditing ? 'Guardar' : 'Editar'}</span>
+              <span className="hidden sm:inline">{isEditing ? 'Salir Edición' : 'Modo Edición'}</span>
+              <span className="sm:hidden">{isEditing ? 'Salir' : 'Editar'}</span>
             </Button>
+            {isEditing && (
+              <Button
+                variant={showGrid ? 'default' : 'outline'}
+                onClick={() => setShowGrid(!showGrid)}
+                className={showGrid ? 'bg-amber-500 hover:bg-amber-600 text-white' : ''}
+                title="Mostrar/Ocultar cuadrícula"
+              >
+                <Grid3x3 className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               onClick={() => setIsCrearOpen(true)}
               className="bg-rose-600 hover:bg-rose-700"
@@ -211,10 +225,11 @@ export default function MesasPage() {
             </CardContent>
           </Card>
         ) : (
-          <MapaMesas
+          <MapaMesasZoom
             onMesaClick={handleMesaClick}
             editable={user.rol === 'admin'}
             isEditing={isEditing}
+            showGrid={showGrid}
             mesaSeleccionadaId={mesaSeleccionada?.id}
           />
         )}

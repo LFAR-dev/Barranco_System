@@ -127,7 +127,7 @@ export function MesaAccionesPanel({
 
   const handleLiberarMesa = async () => {
     if (!mesa) return
-    if (!confirm(`¿Liberar la mesa ${mesa.numero}? La cuenta se cerrará y quedará disponible.`)) return
+    if (!confirm(`¿Liberar la mesa ${mesa.numero}? La cuenta se cerrará.`)) return
     setLoading(true)
     try {
       if (cuenta) {
@@ -165,9 +165,17 @@ export function MesaAccionesPanel({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto p-0">
-        {/* Header con color según categoría */}
-        <DialogHeader className="p-4 sm:p-6 pb-3 border-b bg-gradient-to-r from-gray-50 to-white">
+      <DialogContent className="
+        max-w-md w-full 
+        sm:w-[95vw] 
+        max-h-[90vh] sm:max-h-[90vh]
+        overflow-y-auto 
+        p-0
+        fixed bottom-0 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2
+        rounded-t-2xl sm:rounded-2xl
+        sm:left-1/2 sm:-translate-x-1/2
+      ">
+        <DialogHeader className="p-4 pb-3 border-b bg-gradient-to-r from-gray-50 to-white sticky top-0 z-10">
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center text-white font-bold">
@@ -182,77 +190,71 @@ export function MesaAccionesPanel({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="p-4 sm:p-6 space-y-4">
+        <div className="p-4 space-y-4">
           {/* Info básica */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <p className="text-xs text-gray-500 flex items-center gap-1">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-gray-50 rounded-lg p-2.5">
+              <p className="text-[10px] sm:text-xs text-gray-500 flex items-center gap-1">
                 <Users className="h-3 w-3" /> Capacidad
               </p>
               <p className="text-sm font-semibold text-gray-900">{mesa.capacidad} personas</p>
             </div>
             {estaOcupada || cuentaSolicitada ? (
-              <div className="bg-orange-50 rounded-lg p-3">
-                <p className="text-xs text-orange-700 flex items-center gap-1">
+              <div className="bg-orange-50 rounded-lg p-2.5">
+                <p className="text-[10px] sm:text-xs text-orange-700 flex items-center gap-1">
                   <Clock className="h-3 w-3" /> Tiempo abierta
                 </p>
                 <p className="text-sm font-semibold text-orange-900">{tiempoAbierta} min</p>
               </div>
             ) : (
-              <div className="bg-green-50 rounded-lg p-3">
-                <p className="text-xs text-green-700 flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3" /> Lista para usar
+              <div className="bg-green-50 rounded-lg p-2.5">
+                <p className="text-[10px] sm:text-xs text-green-700 flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3" /> Lista
                 </p>
                 <p className="text-sm font-semibold text-green-900">Disponible</p>
               </div>
             )}
           </div>
 
-          {/* Info de mesero asignado */}
+          {/* Mesero asignado */}
           {mesa.mesero && (
-            <div className={`rounded-lg p-3 border ${
+            <div className={`rounded-lg p-2.5 border ${
               esMiMesa 
                 ? 'bg-blue-50 border-blue-200' 
                 : 'bg-gray-50 border-gray-200'
             }`}>
-              <p className="text-xs text-gray-600 flex items-center gap-1 mb-1">
-                <UserCircle className="h-3 w-3" /> Mesero asignado
+              <p className="text-[10px] sm:text-xs text-gray-600 flex items-center gap-1 mb-1">
+                <UserCircle className="h-3 w-3" /> Mesero
               </p>
               <p className="text-sm font-semibold text-gray-900">
                 {mesa.mesero.nombre} {mesa.mesero.apellido}
-                {esMiMesa && <Badge className="ml-2 bg-blue-100 text-blue-700 text-[10px]">Tú</Badge>}
+                {esMiMesa && <Badge className="ml-2 bg-blue-100 text-blue-700 text-[9px]">Tú</Badge>}
               </p>
             </div>
           )}
 
-          {/* Info de cuenta activa */}
+          {/* Cuenta activa */}
           {cargandoCuenta && (
-            <div className="flex items-center justify-center py-3">
+            <div className="flex items-center justify-center py-2">
               <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
             </div>
           )}
 
           {cuenta && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-xs text-amber-700 font-medium">Cuenta abierta</p>
-                <Badge className="bg-amber-100 text-amber-700 text-[10px]">
+                <p className="text-[10px] sm:text-xs text-amber-700 font-medium">Cuenta abierta</p>
+                <Badge className="bg-amber-100 text-amber-700 text-[9px]">
                   {cuenta.comensales} comensales
                 </Badge>
               </div>
               <p className="text-lg font-bold text-amber-900">
                 ${cuenta.total_actual.toFixed(2)}
               </p>
-              <p className="text-[10px] text-amber-600 mt-1">
-                Abierta: {new Date(cuenta.abierta_en).toLocaleTimeString('es-MX', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </p>
             </div>
           )}
 
-          {/* Formulario para abrir cuenta */}
+          {/* Formulario abrir cuenta */}
           {modoAbrirCuenta && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
               <Label className="text-xs">Número de comensales</Label>
@@ -279,7 +281,7 @@ export function MesaAccionesPanel({
                   disabled={loading}
                   className="flex-1 bg-blue-600 hover:bg-blue-700"
                 >
-                  {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Abrir cuenta'}
+                  {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Abrir'}
                 </Button>
               </div>
             </div>
@@ -287,7 +289,6 @@ export function MesaAccionesPanel({
 
           {/* Acciones según estado */}
           <div className="space-y-2 pt-3 border-t">
-            {/* Mesa disponible */}
             {estaDisponible && !modoAbrirCuenta && (
               <>
                 <Button
@@ -308,7 +309,6 @@ export function MesaAccionesPanel({
               </>
             )}
 
-            {/* Mesa ocupada por mí */}
             {estaOcupada && esMiMesa && (
               <>
                 <Button
@@ -339,37 +339,34 @@ export function MesaAccionesPanel({
               </>
             )}
 
-            {/* Mesa ocupada por otro mesero */}
             {estaOcupada && !esMiMesa && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                   <p className="text-xs text-amber-800">
-                    Esta mesa está siendo atendida por otro mesero. Solo puedes consultar la información.
+                    Esta mesa está siendo atendida por otro mesero.
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Cuenta solicitada */}
             {cuentaSolicitada && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <div className="flex items-start gap-2">
                   <Clock className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
                   <p className="text-xs text-blue-800">
-                    Caja fue notificada. Esperando cobro de la cuenta.
+                    Caja fue notificada. Esperando cobro.
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Fuera de servicio */}
             {mesa.estado === 'fuera_servicio' && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                 <div className="flex items-start gap-2">
                   <X className="h-4 w-4 text-gray-600 mt-0.5 shrink-0" />
                   <p className="text-xs text-gray-700">
-                    Esta mesa está fuera de servicio. Contacta al administrador.
+                    Mesa fuera de servicio. Contacta al administrador.
                   </p>
                 </div>
               </div>

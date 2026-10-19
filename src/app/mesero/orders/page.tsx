@@ -14,7 +14,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
 import { mesaService, Mesa } from '@/lib/services/mesaService'
 import { cuentaService, CuentaAbierta } from '@/lib/services/cuentaService'
-import { MapaMesas } from '@/components/mesas/MapaMesas'
+import { MapaMesasZoom } from '@/components/mesas/MapaMesasZoom'
 import { MesaAccionesPanel } from '@/components/mesas/MesaAccionesPanel'
 
 export default function MeseroOrdersPage() {
@@ -155,7 +155,7 @@ export default function MeseroOrdersPage() {
           </Card>
         </div>
 
-        {/* Banner con total de mis cuentas */}
+        {/* Banner cuentas activas */}
         {misCuentasActivas.length > 0 && (
           <Card className="mb-4 border-l-4 border-l-emerald-500 bg-emerald-50">
             <CardContent className="p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2">
@@ -185,13 +185,13 @@ export default function MeseroOrdersPage() {
             </CardContent>
           </Card>
         ) : (
-          <MapaMesas
+          <MapaMesasZoom
             onMesaClick={handleMesaClick}
             mesaSeleccionadaId={mesaSeleccionada?.id}
           />
         )}
 
-        {/* Info adicional */}
+        {/* Leyenda */}
         <Card className="mt-4 bg-gray-50 border-gray-200">
           <CardContent className="p-3">
             <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
@@ -220,7 +220,7 @@ export default function MeseroOrdersPage() {
         </Card>
       </div>
 
-      {/* Panel de acciones de mesa */}
+      {/* Panel de acciones */}
       {user && (
         <MesaAccionesPanel
           mesa={mesaSeleccionada}
