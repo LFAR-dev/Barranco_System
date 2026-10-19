@@ -11,12 +11,14 @@ import { ToastContainer } from '@/components/ui/toast-container'
 import { EditProfileModal } from '@/components/admin/EditProfileModal'
 import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
 import { JornadaButton } from '@/components/admin/jornada/JornadaButton'
+import { CerrarTurnoModal } from '@/components/admin/jornada/CerrarTurnoModal'
 import { AppShell } from '@/components/layout/AppShell'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { SidebarSection } from '@/components/layout/AppSidebar'
 import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { jornadaService, Jornada } from '@/lib/services/jornadaService'
 
 const SECTIONS: SidebarSection[] = [
   {
@@ -58,6 +60,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { toast } = useToast()
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [redirecting, setRedirecting] = useState(false)
+  const [jornadaActiva, setJornadaActiva] = useState<Jornada | null>(null)
+  const [isCerrarTurnoOpen, setIsCerrarTurnoOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user && !redirecting) {
@@ -66,10 +70,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [user, loading, router, redirecting])
 
+  useEffect(() => {
+    if (user) {
+      cargarJornada()
+    }
+  }, [user])
+
+  const cargarJornada = async () => {
+    try {
+      const data = await jornadaService.getJornadaActual()
+      setJornadaActiva(data)
+    } catch (error) {
+      console.error('Error al cargar jornada:', error)
+    }
+  }
+
   const handleLogout = async () => {
     try {
       await logout()
-      toast({ title: '👋 Sesión cerrada', description: 'Has cerrado sesión correctamente' })
+      toast({ title: 'Sesión cerrada', description: 'Has cerrado sesión correctamente' })
       router.push('/')
     } catch (error) {
       router.push('/')
@@ -80,6 +99,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('jornada:abrir-modal-desde-avatar'))
     }
+  }
+
+  const handleAbrirCerrarTurno = async () => {
+    // Recargar jornada antes de abrir para asegurar que está activa
+    try {
+      const data = await jornadaService.getJornadaActual()
+      if (!data) {
+        toast({
+          title: 'Sin jornada activa',
+          description: 'Primero abre la jornada del día',
+          variant: 'destructive'
+        })
+        return
+      }
+      setJornadaActiva(data)
+      setIsCerrarTurnoOpen(true)
+    } catch (error) {
+      console.error('Error al abrir modal de cierre:', error)
+    }
+  }
+
+  const handleCerrarTurnoSuccess = () => {
+    cargarJornada()
+    toast({
+      title: 'Turno cerrado',
+      description: 'Los trabajadores fueron notificados'
+    })
   }
 
   if (loading || redirecting) {
@@ -121,6 +167,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               onLogout={handleLogout}
               onEditProfile={() => setIsProfileOpen(true)}
               onJornadaClick={handleJornadaDesdeAvatar}
+              onCerrarTurnoClick={handleAbrirCerrarTurno}
             />
           </>
         }
@@ -138,6 +185,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="hidden">
         <JornadaButton />
       </div>
+
+      {jornadaActiva && (
+        <CerrarTurnoModal
+          isOpen={isCerrarTurnoOpen}
+          onClose={() => setIsCerrarTurnoOpen(false)}
+          jornada={jornadaActiva}
+          onSuccess={handleCerrarTurnoSuccess}
+        />
+      )}
     </>
   )
 }

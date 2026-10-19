@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { User, Camera, Loader2, CheckCircle, LogOut, Calendar, CheckCircle2, XCircle } from 'lucide-react'
+import {
+  User, Camera, Loader2, CheckCircle, LogOut,
+  Calendar, CheckCircle2, XCircle, Lock, AlertTriangle
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AvatarWithViewer } from '@/components/ui/AvatarWithViewer'
 import { userService } from '@/lib/services/userService'
@@ -27,6 +30,7 @@ interface UserMenuProps {
   onSalirTurno?: () => void
   onEditProfile?: () => void
   onJornadaClick?: () => void
+  onCerrarTurnoClick?: () => void
 }
 
 const rolColors: Record<Rol, { bg: string; text: string; label: string; avatarBg: string }> = {
@@ -41,7 +45,8 @@ export function UserMenu({
   onLogout,
   onSalirTurno,
   onEditProfile,
-  onJornadaClick
+  onJornadaClick,
+  onCerrarTurnoClick
 }: UserMenuProps) {
   const { user } = useAuth()
   const { greeting } = useGreeting()
@@ -116,7 +121,7 @@ export function UserMenu({
 
       await loadUserData()
       toast({
-        title: '✅ Foto actualizada',
+        title: 'Foto actualizada',
         description: 'Tu foto de perfil ha sido actualizada',
         variant: 'success'
       })
@@ -183,6 +188,11 @@ export function UserMenu({
     if (onJornadaClick) setTimeout(() => onJornadaClick(), 150)
   }
 
+  const handleCerrarTurnoClick = () => {
+    setIsOpen(false)
+    if (onCerrarTurnoClick) setTimeout(() => onCerrarTurnoClick(), 150)
+  }
+
   return (
     <>
       <input
@@ -242,7 +252,7 @@ export function UserMenu({
             </div>
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64" sideOffset={5}>
+        <DropdownMenuContent align="end" className="w-72" sideOffset={5}>
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col space-y-1">
               <p className="text-sm font-medium leading-none">{getFullName()}</p>
@@ -254,6 +264,7 @@ export function UserMenu({
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
 
+          {/* JORNADA — solo admin */}
           {esAdmin && (
             <>
               {jornada ? (
@@ -262,13 +273,12 @@ export function UserMenu({
                   className="cursor-pointer text-amber-700 focus:text-amber-800 focus:bg-amber-50"
                 >
                   <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" />
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium">Jornada activa</p>
-                    <p className="text-[10px] text-gray-500 truncate max-w-[160px]">
+                    <p className="text-[10px] text-gray-500 truncate">
                       {jornada.nombre}
                     </p>
                   </div>
-                  <XCircle className="h-4 w-4 text-red-500" />
                 </DropdownMenuItem>
               ) : (
                 <DropdownMenuItem
@@ -279,6 +289,24 @@ export function UserMenu({
                   <span>Abrir jornada</span>
                 </DropdownMenuItem>
               )}
+
+              {/* Botón de Cierre Definitivo — solo admin, solo si jornada activa */}
+              {jornada && onCerrarTurnoClick && (
+                <DropdownMenuItem
+                  onClick={handleCerrarTurnoClick}
+                  className="cursor-pointer text-red-700 focus:text-red-800 focus:bg-red-50"
+                >
+                  <Lock className="mr-2 h-4 w-4" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold">Cerrar turno</p>
+                    <p className="text-[10px] text-red-600">
+                      Bloquea todas las operaciones
+                    </p>
+                  </div>
+                  <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                </DropdownMenuItem>
+              )}
+
               <DropdownMenuSeparator />
             </>
           )}

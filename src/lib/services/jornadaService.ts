@@ -201,3 +201,50 @@ export const jornadaService = {
     return jornadaIdAnterior !== jornadaActual
   }
 }
+
+// ============================================================
+// EXTENSIÓN: Cierre definitivo de turno
+// ============================================================
+
+export interface CierreDefinitivoResult {
+  success: boolean
+  jornada_id: string
+  pedidos_pendientes: number
+  sesiones_cerradas: number
+  trabajadores_notificados: number
+}
+
+/**
+ * Cierra el turno de forma definitiva (bloquea operaciones).
+ * Solo admin.
+ */
+export async function cerrarTurnoDefinitivo(
+  jornadaId: string,
+  notas?: string
+): Promise<CierreDefinitivoResult> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('cerrar_jornada_definitivo', {
+    p_jornada_id: jornadaId,
+    p_notas: notas || null
+  })
+
+  if (error) {
+    console.error('Error al cerrar turno:', error)
+    throw new Error(error.message || 'No se pudo cerrar el turno')
+  }
+
+  return data as CierreDefinitivoResult
+}
+
+/**
+ * Verifica si el turno está abierto
+ */
+export async function turnoEstaAbierto(): Promise<boolean> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('turno_esta_abierto')
+  if (error) {
+    console.error('Error al verificar turno:', error)
+    return false
+  }
+  return data === true
+}
