@@ -2,119 +2,308 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Edit, Trash2, Table, Search, RefreshCw } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { ArrowLeft, Plus, RefreshCw, LayoutGrid, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { createClient } from '@/lib/supabase/client'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { useAuth } from '@/hooks/useAuth'
+import { useToast } from '@/hooks/use-toast'
+import { mesaService, Mesa, CategoriaMesa } from '@/lib/services/mesaService'
+import { MapaMesas } from '@/components/mesas/MapaMesas'
+import { MesaDetalleModal } from '@/components/mesas/MesaDetalleModal'
 
 export default function MesasPage() {
-  const supabase = createClient()
-  const [mesas, setMesas] = useState<any[]>([])
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [mesas, setMesas] = useState<Mesa[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
+  const [isDetalleOpen, setIsDetalleOpen] = useState(false)
+  const [isCrearOpen, setIsCrearOpen] = useState(false)
 
-  useEffect(() => {
-    fetchMesas()
-  }, [])
+  // Formulario para crear mesa nueva
+  const [nuevaMesa, setNuevaMesa] = useState({
+    numero: '',
+    categoria: 'social' as CategoriaMesa,
+    capacidad: 4,
+    mapa_x: 50,
+    mapa_y: 50
+  })
 
-  const fetchMesas = async () => {
+  const cargarMesas = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('mesas')
-        .select('*')
-        .order('numero')
-      if (error) throw error
-      setMesas(data || [])
+      const data = await mesaService.getAll(true)
+      setMesas(data)
     } catch (error) {
-      console.error('Error fetching mesas:', error)
+      console.error('Error al cargar mesas:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredMesas = mesas.filter(m => 
-    m.numero?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    m.ubicacion?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  useEffect(() => {
+    cargarMesas()
+  }, [])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600"></div>
-      </div>
-    )
+  const handleMesaClick = (mesa: Mesa) => {
+    setMesaSeleccionada(mesa)
+    setIsDetalleOpen(true)
+  }
+
+  const handleCrearMesa = async () => {
+    if (!nuevaMesa.numero.trim()) {
+      toast({
+        title: 'Número requerido',
+        description: 'La mesa debe tener un número',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    try {
+      await mesaService.crear({
+        numero: nuevaMesa.numero.toUpperCase(),
+        categoria: nuevaMesa.categoria,
+        capacidad: nuevaMesa.capacidad,
+        mapa_x: nuevaMesa.mapa_x,
+        mapa_y: nuevaMesa.mapa_y
+      })
+      toast({
+        title: 'Mesa creada',
+        description: `Mesa ${nuevaMesa.numero} agregada al mapa`,
+        variant: 'success'
+      })
+      setIsCrearOpen(false)
+      setNuevaMesa({ numero: '', categoria: 'social', capacidad: 4, mapa_x: 50, mapa_y: 50 })
+      cargarMesas()
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'No se pudo crear la mesa',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  if (!user) return null
+
+  const stats = {
+    total: mesas.length,
+    disponibles: mesas.filter(m => m.estado === 'disponible').length,
+    ocupadas: mesas.filter(m => m.estado === 'ocupada').length,
+    cuentaSolicitada: mesas.filter(m => m.estado === 'cuenta_solicitada').length
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4">
+      <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
+          <div className="flex items-center gap-3">
             <Link href="/admin">
               <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Volver
+                <ArrowLeft className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Volver</span>
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Mesas</h1>
-              <p className="text-sm text-gray-500">Gestiona las mesas del bar</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Mapa de Mesas</h1>
+              <p className="text-sm text-gray-500">
+                Gestión visual del establecimiento
+              </p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Button className="bg-rose-600 hover:bg-rose-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva Mesa
+            <Button
+              onClick={() => setIsCrearOpen(true)}
+              className="bg-rose-600 hover:bg-rose-700"
+            >
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Nueva Mesa</span>
+              <span className="sm:hidden">Nueva</span>
             </Button>
-            <Button variant="outline" onClick={fetchMesas}>
+            <Button variant="outline" size="sm" onClick={cargarMesas}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Buscar mesas..."
-            className="pl-9"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredMesas.map((mesa) => (
-            <Card key={mesa.id} className="hover:shadow-lg transition-all border-t-4 border-t-rose-500">
-              <CardContent className="p-4 text-center">
-                <div className="text-3xl font-bold text-gray-700">{mesa.numero}</div>
-                <div className="text-sm text-gray-500">{mesa.ubicacion || 'Sin ubicación'}</div>
-                <Badge className={`mt-2 ${mesa.activa ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                  {mesa.activa ? 'Activa' : 'Inactiva'}
-                </Badge>
-                <div className="mt-2 text-xs text-gray-400">Capacidad: {mesa.capacidad || 4} personas</div>
-                <div className="flex justify-center gap-2 mt-3 pt-3 border-t">
-                  <Button variant="ghost" size="sm" className="text-blue-600">
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="text-red-600">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Total</p>
+                  <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.total}</p>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <LayoutGrid className="h-4 w-4 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Disponibles</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-600">{stats.disponibles}</p>
+                </div>
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <List className="h-4 w-4 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Ocupadas</p>
+                  <p className="text-lg sm:text-xl font-bold text-red-600">{stats.ocupadas}</p>
+                </div>
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <LayoutGrid className="h-4 w-4 text-red-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Cuenta pedida</p>
+                  <p className="text-lg sm:text-xl font-bold text-amber-600">{stats.cuentaSolicitada}</p>
+                </div>
+                <div className="p-2 bg-amber-100 rounded-lg">
+                  <LayoutGrid className="h-4 w-4 text-amber-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {filteredMesas.length === 0 && (
-          <div className="text-center py-12">
-            <Table className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-500">No se encontraron mesas</p>
-          </div>
+        {/* Mapa */}
+        {loading && mesas.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600 mx-auto" />
+            </CardContent>
+          </Card>
+        ) : (
+          <MapaMesas
+            onMesaClick={handleMesaClick}
+            editable={user.rol === 'admin'}
+            mesaSeleccionadaId={mesaSeleccionada?.id}
+          />
         )}
       </div>
+
+      {/* Modal de detalle/edición */}
+      <MesaDetalleModal
+        mesa={mesaSeleccionada}
+        isOpen={isDetalleOpen}
+        onClose={() => {
+          setIsDetalleOpen(false)
+          setMesaSeleccionada(null)
+        }}
+        onSuccess={cargarMesas}
+        editable={user.rol === 'admin'}
+      />
+
+      {/* Modal de crear mesa */}
+      <Dialog open={isCrearOpen} onOpenChange={setIsCrearOpen}>
+        <DialogContent className="max-w-md w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Nueva Mesa
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div>
+              <Label htmlFor="numero">Número / Identificador</Label>
+              <Input
+                id="numero"
+                value={nuevaMesa.numero}
+                onChange={(e) => setNuevaMesa({ ...nuevaMesa, numero: e.target.value })}
+                placeholder="Ej: T12, E6, X1..."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="categoria">Categoría</Label>
+                <select
+                  id="categoria"
+                  value={nuevaMesa.categoria}
+                  onChange={(e) => setNuevaMesa({ ...nuevaMesa, categoria: e.target.value as CategoriaMesa })}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="especial">Especial</option>
+                  <option value="social">Social</option>
+                  <option value="privada">Privada</option>
+                  <option value="terraza">Terraza</option>
+                  <option value="temporal">Temporal</option>
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="capacidad">Capacidad</Label>
+                <Input
+                  id="capacidad"
+                  type="number"
+                  min="1"
+                  value={nuevaMesa.capacidad}
+                  onChange={(e) => setNuevaMesa({ ...nuevaMesa, capacidad: parseInt(e.target.value) || 4 })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Posición X (%)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={nuevaMesa.mapa_x}
+                  onChange={(e) => setNuevaMesa({ ...nuevaMesa, mapa_x: parseFloat(e.target.value) })}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Posición Y (%)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={nuevaMesa.mapa_y}
+                  onChange={(e) => setNuevaMesa({ ...nuevaMesa, mapa_y: parseFloat(e.target.value) })}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={() => setIsCrearOpen(false)} className="flex-1">
+                Cancelar
+              </Button>
+              <Button onClick={handleCrearMesa} className="flex-1 bg-rose-600 hover:bg-rose-700">
+                Crear Mesa
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
