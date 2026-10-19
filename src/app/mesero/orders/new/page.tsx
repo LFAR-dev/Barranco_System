@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/client'
 import { recipeService, Recipe } from '@/lib/services/recipeService'
 import { orderService, OrderItem } from '@/lib/services/orderService'
 import { BotonReceta } from '@/components/shared/BotonReceta'
+import { cuentaService } from '@/lib/services/cuentaService'
 
 interface OrderItemWithStock extends OrderItem {
   tiene_stock?: boolean
@@ -166,7 +167,7 @@ export default function NewOrderPage() {
 
   const total = cart.reduce((sum, item) => sum + item.precio * item.cantidad, 0)
 
-  const handleSubmit = async () => {
+    const handleSubmit = async () => {
     if (!user) {
       toast({
         title: 'Error',
@@ -196,9 +197,13 @@ export default function NewOrderPage() {
 
     setLoading(true)
     try {
-      const pedidoData = {
-        mesa_id: mesaId,
+      // 1. Verificar si la mesa tiene cuenta abierta
+      const cuentaActiva = await cuentaService.getCuentaActiva(mesaId)
+
+      // 2. Construir el pedido
+      const pedidoData: any = {
         mesero_id: user.id,
+        mesa: mesaInfo?.numero || 'N/A',
         items: cart.map(item => ({
           receta_id: item.receta_id,
           cantidad: item.cantidad,
@@ -207,38 +212,56 @@ export default function NewOrderPage() {
           tipo: item.tipo
         })),
         total,
-        estado: 'activo'
+        estado: 'pendiente',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }
 
+      // Si hay cuenta abierta, vincular
+      if (cuentaActiva) {
+        pedidoData.cuenta_abierta_id = cuentaActiva.id
+      }
+
+      // 3. Insertar en pedidos
       const { data, error } = await supabase
-        .from('pedidos_activos')
+        .from('pedidos')
         .insert([pedidoData])
         .select()
         .single()
 
       if (error) throw error
 
+      // 4. Si hay cuenta, recalcular el total
+      if (cuentaActiva) {
+        await cuentaService.vincularPedidoACuenta(data.id, cuentaActiva.id)
+      }
+
+      // 5. Notificar al bartender
       await supabase
         .from('notificaciones_bartender')
         .insert([{
           bartender_id: null,
           pedido_id: data.id,
-          mensaje: `📦 Nuevo pedido - Mesa ${mesaInfo?.numero || 'N/A'}`,
-          tipo: 'nuevo_pedido'
+          mensaje: `Nuevo pedido - Mesa ${mesaInfo?.numero || 'N/A'} - ${cart.length} items`,
+          tipo: 'nuevo_pedido',
+          leida: false
         }])
 
+      // 6. Toast de éxito
       toast({
-        title: '✅ Pedido enviado',
+        title: 'Pedido enviado',
         description: `Pedido de mesa ${mesaInfo?.numero || 'N/A'} enviado al bartender`,
         variant: 'success'
       })
 
+      // 7. Redirigir
       router.push('/mesero/orders')
-    } catch (error) {
+
+    } catch (error: any) {
       console.error('Error creating order:', error)
       toast({
         title: 'Error',
-        description: 'No se pudo crear el pedido',
+        description: error.message || 'No se pudo crear el pedido',
         variant: 'destructive'
       })
     } finally {

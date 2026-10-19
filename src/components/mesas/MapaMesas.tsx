@@ -1,24 +1,34 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, MousePointer2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { mesaService, Mesa } from '@/lib/services/mesaService'
 import { createClient } from '@/lib/supabase/client'
 import { MesaCard3D } from './MesaCard3D'
+import { MesaCardEditable } from './MesaCardEditable'
 import { ElementoMapa } from './ElementoMapa'
+import { useToast } from '@/hooks/use-toast'
 
 interface MapaMesasProps {
   onMesaClick?: (mesa: Mesa) => void
   editable?: boolean
+  isEditing?: boolean
   mesaSeleccionadaId?: string
 }
 
-export function MapaMesas({ onMesaClick, editable = false, mesaSeleccionadaId }: MapaMesasProps) {
+export function MapaMesas({ 
+  onMesaClick, 
+  editable = false, 
+  isEditing = false,
+  mesaSeleccionadaId 
+}: MapaMesasProps) {
   const [mesas, setMesas] = useState<Mesa[]>([])
   const [elementos, setElementos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
   const supabase = createClient()
+  const { toast } = useToast()
 
   const cargarDatos = useCallback(async () => {
     setLoading(true)
@@ -39,21 +49,47 @@ export function MapaMesas({ onMesaClick, editable = false, mesaSeleccionadaId }:
   useEffect(() => {
     cargarDatos()
 
-    // Suscripción Realtime para actualizar el mapa automáticamente
     const channel = supabase
       .channel('mapa_mesas_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, () => {
-        cargarDatos()
+        if (!isEditing) cargarDatos()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mapa_elementos' }, () => {
-        cargarDatos()
+        if (!isEditing) cargarDatos()
       })
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [cargarDatos, supabase])
+  }, [cargarDatos, supabase, isEditing])
+
+  const handleDragEnd = async (id: string, x: number, y: number) => {
+    // Actualización optimista en la UI
+    setMesas(prev => prev.map(m => m.id === id ? { ...m, mapa_x: x, mapa_y: y } : m))
+    
+    try {
+      await mesaService.actualizarPosicion(id, x, y)
+      toast({
+        title: 'Posición guardada',
+        description: 'La nueva ubicación ha sido guardada',
+        variant: 'success',
+        duration: 2000
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo guardar la posición',
+        variant: 'destructive'
+      })
+      cargarDatos() // Revertir
+    }
+  }
+
+  const handleSelectFromEdit = (mesa: Mesa) => {
+    setMesaSeleccionada(mesa)
+    onMesaClick?.(mesa)
+  }
 
   if (loading && mesas.length === 0) {
     return (
@@ -68,9 +104,9 @@ export function MapaMesas({ onMesaClick, editable = false, mesaSeleccionadaId }:
 
   return (
     <div className="relative w-full bg-[#1a1410] rounded-2xl overflow-hidden shadow-2xl">
-      {/* Textura de madera de fondo */}
+      {/* Fondo texturizado */}
       <div 
-        className="absolute inset-0 opacity-40"
+        className="absolute inset-0 opacity-40 pointer-events-none"
         style={{
           backgroundImage: `
             repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px),
@@ -80,7 +116,7 @@ export function MapaMesas({ onMesaClick, editable = false, mesaSeleccionadaId }:
         }}
       />
 
-      {/* Header del mapa (estilo Apple) */}
+      {/* Header */}
       <div className="relative z-30 px-6 py-4 bg-black/40 backdrop-blur-md border-b border-amber-500/20 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg">
@@ -88,11 +124,19 @@ export function MapaMesas({ onMesaClick, editable = false, mesaSeleccionadaId }:
           </div>
           <div>
             <h2 className="text-white font-bold text-lg tracking-wider">BARRANCO</h2>
-            <p className="text-amber-200/70 text-xs tracking-widest">MAPA DE MESAS</p>
+            <p className="text-amber-200/70 text-xs tracking-widest">
+              {isEditing ? 'MODO EDICIÓN' : 'MAPA DE MESAS'}
+            </p>
           </div>
         </div>
 
-        {/* Leyenda de categorías */}
+        {isEditing && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 border border-blue-400/30 rounded-full text-blue-200 text-xs animate-pulse">
+            <MousePointer2 className="h-3 w-3" />
+            Arrastra las mesas para reubicarlas
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20">
             <div className="w-3 h-3 rounded-full bg-white border border-amber-400" />
@@ -112,7 +156,6 @@ export function MapaMesas({ onMesaClick, editable = false, mesaSeleccionadaId }:
           </div>
         </div>
 
-        {/* Botón actualizar */}
         <Button
           variant="ghost"
           size="sm"
@@ -123,34 +166,48 @@ export function MapaMesas({ onMesaClick, editable = false, mesaSeleccionadaId }:
         </Button>
       </div>
 
-      {/* Área del mapa (16:9 isométrico) */}
+      {/* Área del mapa */}
       <div 
-        className="relative w-full"
+        className="relative w-full mapa-container touch-none"
         style={{ 
           aspectRatio: '16/9',
           minHeight: '500px'
         }}
       >
-        {/* Elementos decorativos del mapa (barras, accesos, baños) */}
+        {/* Elementos estáticos */}
         {elementos.map((el) => (
           <ElementoMapa key={el.id} elemento={el} />
         ))}
 
         {/* Mesas */}
-        {mesas.map((mesa) => (
-          <MesaCard3D
-            key={mesa.id}
-            mesa={mesa}
-            onClick={(m) => onMesaClick?.(m)}
-            isSelected={mesaSeleccionadaId === mesa.id}
-          />
-        ))}
+        {mesas.map((mesa) => {
+          if (isEditing) {
+            return (
+              <MesaCardEditable
+                key={mesa.id}
+                mesa={mesa}
+                isSelected={mesaSeleccionada?.id === mesa.id || mesaSeleccionadaId === mesa.id}
+                onSelect={handleSelectFromEdit}
+                onDragEnd={handleDragEnd}
+              />
+            )
+          }
+
+          return (
+            <MesaCard3D
+              key={mesa.id}
+              mesa={mesa}
+              onClick={(m) => onMesaClick?.(m)}
+              isSelected={mesaSeleccionadaId === mesa.id}
+            />
+          )
+        })}
       </div>
 
-      {/* Footer informativo */}
+      {/* Footer */}
       <div className="relative z-30 px-6 py-2 bg-black/40 backdrop-blur-md border-t border-amber-500/20 flex items-center justify-between text-xs text-white/60">
         <span>{mesas.length} mesas · {elementos.length} elementos</span>
-        <span>Actualizado: {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
+        <span>Última act: {new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
     </div>
   )

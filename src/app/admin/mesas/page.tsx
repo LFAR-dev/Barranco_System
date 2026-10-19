@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, RefreshCw, LayoutGrid, List } from 'lucide-react'
+import { ArrowLeft, Plus, RefreshCw, LayoutGrid, List, MousePointer2, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -25,11 +24,12 @@ export default function MesasPage() {
   const { toast } = useToast()
   const [mesas, setMesas] = useState<Mesa[]>([])
   const [loading, setLoading] = useState(true)
+  const [isEditing, setIsEditing] = useState(false)
+  
   const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
   const [isDetalleOpen, setIsDetalleOpen] = useState(false)
   const [isCrearOpen, setIsCrearOpen] = useState(false)
 
-  // Formulario para crear mesa nueva
   const [nuevaMesa, setNuevaMesa] = useState({
     numero: '',
     categoria: 'social' as CategoriaMesa,
@@ -122,7 +122,17 @@ export default function MesasPage() {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={isEditing ? 'default' : 'outline'}
+              onClick={() => setIsEditing(!isEditing)}
+              className={isEditing ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+            >
+              <MousePointer2 className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{isEditing ? 'Guardar Vista' : 'Modo Edición'}</span>
+              <span className="sm:hidden">{isEditing ? 'Guardar' : 'Editar'}</span>
+            </Button>
             <Button
               onClick={() => setIsCrearOpen(true)}
               className="bg-rose-600 hover:bg-rose-700"
@@ -204,6 +214,7 @@ export default function MesasPage() {
           <MapaMesas
             onMesaClick={handleMesaClick}
             editable={user.rol === 'admin'}
+            isEditing={isEditing}
             mesaSeleccionadaId={mesaSeleccionada?.id}
           />
         )}

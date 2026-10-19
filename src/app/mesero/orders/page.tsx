@@ -3,53 +3,51 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { 
-  ArrowLeft, Plus, Coffee, Clock, CheckCircle, 
-  XCircle, ShoppingBag, Users, MapPin, 
-  Home, Store, Sun, Sofa, Martini, RefreshCw
+import {
+  ArrowLeft, Plus, RefreshCw, Coffee, Clock,
+  CheckCircle, AlertCircle, UserCircle, DollarSign
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
-import { createClient } from '@/lib/supabase/client'
-import { MesaMap } from '@/components/mesero/MesaMap'
+import { mesaService, Mesa } from '@/lib/services/mesaService'
+import { cuentaService, CuentaAbierta } from '@/lib/services/cuentaService'
+import { MapaMesas } from '@/components/mesas/MapaMesas'
+import { MesaAccionesPanel } from '@/components/mesas/MesaAccionesPanel'
 
 export default function MeseroOrdersPage() {
   const { user } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
-  const [selectedMesa, setSelectedMesa] = useState<any>(null)
-  const [pedidos, setPedidos] = useState<any[]>([])
+
+  const [mesas, setMesas] = useState<Mesa[]>([])
+  const [cuentas, setCuentas] = useState<CuentaAbierta[]>([])
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+  const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
 
   useEffect(() => {
     if (user) {
-      fetchPedidos()
+      cargarDatos()
     }
   }, [user])
 
-  const fetchPedidos = async () => {
+  const cargarDatos = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('pedidos_activos')
-        .select(`
-          *,
-          mesas!inner(numero, ubicacion)
-        `)
-        .eq('mesero_id', user?.id)
-        .order('ultima_actividad', { ascending: false })
-
-      if (error) throw error
-      setPedidos(data || [])
+      const [mesasData, cuentasData] = await Promise.all([
+        mesaService.getAll(true),
+        user ? cuentaService.getCuentasDelMesero(user.id) : Promise.resolve([])
+      ])
+      setMesas(mesasData)
+      setCuentas(cuentasData)
     } catch (error) {
-      console.error('Error fetching pedidos:', error)
+      console.error('Error al cargar datos:', error)
       toast({
         title: 'Error',
-        description: 'No se pudieron cargar los pedidos',
+        description: 'No se pudieron cargar las mesas',
         variant: 'destructive'
       })
     } finally {
@@ -57,170 +55,184 @@ export default function MeseroOrdersPage() {
     }
   }
 
-  const handleSelectMesa = (mesa: any) => {
-    setSelectedMesa(mesa)
-    router.push(`/mesero/orders/new?mesa=${mesa.id}`)
+  const handleMesaClick = (mesa: Mesa) => {
+    setMesaSeleccionada(mesa)
+    setIsPanelOpen(true)
   }
 
-  const handleNewOrder = (mesa: any) => {
-    router.push(`/mesero/orders/new?mesa=${mesa.id}`)
+  const handlePanelSuccess = () => {
+    cargarDatos()
   }
 
-  const handleCancelOrder = async (pedidoId: string) => {
-    if (!confirm('¿Cancelar este pedido?')) return
-    
-    try {
-      await supabase
-        .from('pedidos_activos')
-        .update({ estado: 'cancelado' })
-        .eq('id', pedidoId)
+  if (!user) return null
 
-      toast({
-        title: '✅ Pedido cancelado',
-        description: 'El pedido ha sido cancelado',
-        variant: 'success'
-      })
-      
-      fetchPedidos()
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo cancelar el pedido',
-        variant: 'destructive'
-      })
-    }
-  }
+  const misCuentasActivas = cuentas.filter(c => c.estado !== 'cerrada')
+  const totalMisCuentas = misCuentasActivas.reduce((sum, c) => sum + c.total_actual, 0)
 
-  const handleEditOrder = (pedidoId: string) => {
-    router.push(`/mesero/orders/edit/${pedidoId}`)
-  }
-
-  const getStatusColor = (estado: string) => {
-    switch (estado) {
-      case 'activo': return 'bg-green-100 text-green-700'
-      case 'enviado': return 'bg-yellow-100 text-yellow-700'
-      case 'preparando': return 'bg-blue-100 text-blue-700'
-      case 'listo': return 'bg-purple-100 text-purple-700'
-      case 'entregado': return 'bg-gray-100 text-gray-700'
-      case 'cancelado': return 'bg-red-100 text-red-700'
-      default: return 'bg-gray-100 text-gray-700'
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600" />
-      </div>
-    )
+  const stats = {
+    total: mesas.length,
+    disponibles: mesas.filter(m => m.estado === 'disponible').length,
+    misMesas: mesas.filter(m => m.mesero_id === user.id).length,
+    cuentasSolicitadas: mesas.filter(m => m.estado === 'cuenta_solicitada').length
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
+      <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
+          <div className="flex items-center gap-3">
             <Link href="/mesero">
-              <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Volver
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Volver</span>
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">📍 Mesas</h1>
-              <p className="text-sm text-gray-500">Selecciona una mesa para tomar su pedido</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Mapa de Mesas</h1>
+              <p className="text-sm text-gray-500">Selecciona una mesa para atenderla</p>
             </div>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={fetchPedidos}
-            className="text-gray-600"
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Actualizar
+          <Button variant="outline" size="sm" onClick={cargarDatos}>
+            <RefreshCw className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Actualizar</span>
           </Button>
         </div>
 
-        <MesaMap 
-          onSelectMesa={handleSelectMesa}
-          onNewOrder={handleNewOrder}
-          meseroId={user?.id || ''}
-        />
+        {/* Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6">
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Total mesas</p>
+                  <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.total}</p>
+                </div>
+                <div className="p-2 bg-gray-100 rounded-lg">
+                  <Coffee className="h-4 w-4 text-gray-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Disponibles</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-600">{stats.disponibles}</p>
+                </div>
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Mis mesas</p>
+                  <p className="text-lg sm:text-xl font-bold text-orange-600">{stats.misMesas}</p>
+                </div>
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <UserCircle className="h-4 w-4 text-orange-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Cuenta pedida</p>
+                  <p className="text-lg sm:text-xl font-bold text-amber-600">{stats.cuentasSolicitadas}</p>
+                </div>
+                <div className="p-2 bg-amber-100 rounded-lg">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-        {pedidos.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <ShoppingBag className="h-5 w-5 text-orange-600" />
-              Mis Pedidos Activos
-              <Badge variant="secondary" className="ml-2">
-                {pedidos.filter(p => p.estado !== 'cancelado' && p.estado !== 'entregado').length}
+        {/* Banner con total de mis cuentas */}
+        {misCuentasActivas.length > 0 && (
+          <Card className="mb-4 border-l-4 border-l-emerald-500 bg-emerald-50">
+            <CardContent className="p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 rounded-lg">
+                  <DollarSign className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-emerald-700">Mis cuentas activas</p>
+                  <p className="text-lg font-bold text-emerald-900">
+                    ${totalMisCuentas.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+              <Badge className="bg-emerald-600 text-white">
+                {misCuentasActivas.length} mesa{misCuentasActivas.length === 1 ? '' : 's'}
               </Badge>
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {pedidos
-                .filter(p => p.estado !== 'cancelado' && p.estado !== 'entregado')
-                .map((pedido) => (
-                  <Card key={pedido.id} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-lg">
-                            Mesa {pedido.mesas?.numero || 'N/A'}
-                          </span>
-                          <Badge className="text-xs text-gray-500 bg-gray-100">
-                            {pedido.mesas?.ubicacion || 'Sin ubicación'}
-                          </Badge>
-                        </div>
-                        <Badge className={getStatusColor(pedido.estado)}>
-                          {pedido.estado.toUpperCase()}
-                        </Badge>
-                      </div>
-                      
-                      <div className="space-y-1 text-sm text-gray-600">
-                        <p className="font-medium">Items:</p>
-                        {pedido.items?.map((item: any, idx: number) => (
-                          <div key={idx} className="flex justify-between text-sm border-b border-gray-100 pb-1">
-                            <span>{item.nombre}</span>
-                            <span className="font-medium">x{item.cantidad}</span>
-                          </div>
-                        ))}
-                      </div>
-                      
-                      <div className="mt-3 pt-3 border-t flex items-center justify-between">
-                        <span className="font-bold text-orange-600">
-                          Total: ${pedido.total?.toFixed(2) || '0.00'}
-                        </span>
-                        <div className="flex gap-2">
-                          {pedido.estado === 'activo' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                              onClick={() => handleEditOrder(pedido.id)}
-                            >
-                              <Plus className="h-3 w-3 mr-1" />
-                              Editar
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => handleCancelOrder(pedido.id)}
-                          >
-                            <XCircle className="h-3 w-3 mr-1" />
-                            Cancelar
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
+
+        {/* Mapa */}
+        {loading && mesas.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto" />
+            </CardContent>
+          </Card>
+        ) : (
+          <MapaMesas
+            onMesaClick={handleMesaClick}
+            mesaSeleccionadaId={mesaSeleccionada?.id}
+          />
+        )}
+
+        {/* Info adicional */}
+        <Card className="mt-4 bg-gray-50 border-gray-200">
+          <CardContent className="p-3">
+            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span>Disponible</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span>Ocupada</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-amber-500" />
+                <span>Cuenta solicitada</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <span>Cobrando</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                <span>Fuera de servicio</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Panel de acciones de mesa */}
+      {user && (
+        <MesaAccionesPanel
+          mesa={mesaSeleccionada}
+          isOpen={isPanelOpen}
+          onClose={() => {
+            setIsPanelOpen(false)
+            setMesaSeleccionada(null)
+          }}
+          usuarioId={user.id}
+          onSuccess={handlePanelSuccess}
+        />
+      )}
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Bell, ShoppingCart, Clock, CheckCircle, Plus,
+  ShoppingCart, Clock, CheckCircle, Plus,
   Wallet, CreditCard, Loader2, XCircle, AlertTriangle
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,9 @@ import { AppShell } from '@/components/layout/AppShell'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { SidebarSection } from '@/components/layout/AppSidebar'
 import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
+import { PanelCuentasCaja } from '@/components/caja/PanelCuentasCaja'
+import { CobrarCuentaModal } from '@/components/caja/CobrarCuentaModal'
+import { CuentaAbierta } from '@/lib/services/cuentaService'
 
 const SECTIONS: SidebarSection[] = [
   {
@@ -47,6 +50,11 @@ export default function CajaDashboard() {
   const [pedidoToCancel, setPedidoToCancel] = useState<Order | null>(null)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [sesionActiva, setSesionActiva] = useState<any>(null)
+
+  // Cuentas abiertas
+  const [cuentaSeleccionada, setCuentaSeleccionada] = useState<CuentaAbierta | null>(null)
+  const [isCobrarOpen, setIsCobrarOpen] = useState(false)
+
   const [stats, setStats] = useState({
     total: 0,
     pendientes: 0,
@@ -90,7 +98,7 @@ export default function CajaDashboard() {
     } catch (error: any) {
       console.error('Error fetching pedidos:', error)
       toast({
-        title: '❌ Error',
+        title: 'Error',
         description: error.message || 'No se pudieron cargar los pedidos',
         variant: 'destructive'
       })
@@ -103,7 +111,7 @@ export default function CajaDashboard() {
     try {
       await logout()
       toast({
-        title: '👋 Sesión cerrada',
+        title: 'Sesión cerrada',
         description: 'Cerraste sesión correctamente',
         variant: 'default'
       })
@@ -116,7 +124,7 @@ export default function CajaDashboard() {
   const handleCobrarPedido = async (pedidoId: string, mesa?: string) => {
     if (!turnoActivo) {
       toast({
-        title: '⚠️ No estás activo',
+        title: 'No estás activo',
         description: 'El administrador debe activarte en el turno para cobrar',
         variant: 'destructive'
       })
@@ -126,14 +134,14 @@ export default function CajaDashboard() {
     try {
       await orderService.markServed(pedidoId)
       toast({
-        title: '✅ Pedido cobrado',
+        title: 'Pedido cobrado',
         description: `El pedido de ${mesa || 'Caja'} se marcó como cobrado`,
         variant: 'success'
       })
       fetchPedidos()
     } catch (error: any) {
       toast({
-        title: '❌ Error',
+        title: 'Error',
         description: error.message || 'No se pudo cobrar el pedido',
         variant: 'destructive'
       })
@@ -143,7 +151,7 @@ export default function CajaDashboard() {
   const handleOpenCancelModal = (pedido: Order) => {
     if (!turnoActivo) {
       toast({
-        title: '⚠️ No estás activo',
+        title: 'No estás activo',
         description: 'No puedes cancelar pedidos sin estar activo en el turno',
         variant: 'destructive'
       })
@@ -153,7 +161,7 @@ export default function CajaDashboard() {
     const canCancel = orderService.canCancelOrder(pedido)
     if (!canCancel.can) {
       toast({
-        title: '⚠️ No se puede cancelar',
+        title: 'No se puede cancelar',
         description: canCancel.reason,
         variant: 'destructive'
       })
@@ -169,7 +177,7 @@ export default function CajaDashboard() {
     try {
       await orderService.cancelOrder(pedidoToCancel.id, motivo, user.id)
       toast({
-        title: '✅ Pedido cancelado',
+        title: 'Pedido cancelado',
         description: `Se canceló el pedido y se notificó al administrador`,
         variant: 'success',
         duration: 6000
@@ -178,6 +186,19 @@ export default function CajaDashboard() {
     } catch (error: any) {
       throw new Error(error.message || 'No se pudo cancelar el pedido')
     }
+  }
+
+  const handleOpenCobrarCuenta = (cuenta: CuentaAbierta) => {
+    if (!turnoActivo) {
+      toast({
+        title: 'No estás activo',
+        description: 'El administrador debe activarte en el turno para cobrar',
+        variant: 'destructive'
+      })
+      return
+    }
+    setCuentaSeleccionada(cuenta)
+    setIsCobrarOpen(true)
   }
 
   const getStatusColor = (estado: string) => {
@@ -320,11 +341,15 @@ export default function CajaDashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 space-y-4">
+              {/* CUENTAS DE MESA (ARRIBA) */}
+              <PanelCuentasCaja onCuentaClick={handleOpenCobrarCuenta} />
+
+              {/* PEDIDOS ACTIVOS */}
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center justify-between text-base sm:text-lg">
-                    <span>📋 Pedidos Activos</span>
+                    <span>Pedidos Activos</span>
                     <Badge variant="secondary" className="text-xs">{pedidosActivos.length}</Badge>
                   </CardTitle>
                 </CardHeader>
@@ -424,7 +449,7 @@ export default function CajaDashboard() {
             <div className="space-y-4">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base sm:text-lg">💰 Resumen de Caja</CardTitle>
+                  <CardTitle className="text-base sm:text-lg">Resumen de Caja</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -458,10 +483,10 @@ export default function CajaDashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-xs sm:text-sm text-gray-600 space-y-2">
-                  <p>• Los pedidos <strong>listos</strong> se pueden cobrar</p>
-                  <p>• Al cancelar, se notifica al administrador</p>
-                  <p>• El motivo de cancelación es obligatorio</p>
-                  <p>• Los pedidos cobrados no se pueden cancelar</p>
+                  <p>Los pedidos <strong>listos</strong> se pueden cobrar individualmente</p>
+                  <p>Las <strong>cuentas de mesa</strong> agrupan múltiples pedidos</p>
+                  <p>Al cobrar una cuenta, la mesa se libera automáticamente</p>
+                  <p>Al cancelar, se notifica al administrador</p>
                 </CardContent>
               </Card>
             </div>
@@ -480,6 +505,16 @@ export default function CajaDashboard() {
           mesa: pedidoToCancel.mesa,
           total: pedidoToCancel.total
         } : undefined}
+      />
+
+      <CobrarCuentaModal
+        cuenta={cuentaSeleccionada}
+        isOpen={isCobrarOpen}
+        onClose={() => {
+          setIsCobrarOpen(false)
+          setCuentaSeleccionada(null)
+        }}
+        onSuccess={fetchPedidos}
       />
 
       <SalirTurnoModal
