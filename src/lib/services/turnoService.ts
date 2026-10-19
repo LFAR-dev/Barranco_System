@@ -82,7 +82,30 @@ export const turnoService = {
       throw new Error(error.message || 'No se pudo activar el turno')
     }
 
-    return data as { success: boolean; trabajadores_activados: number }
+    const result = data as { success: boolean; trabajadores_activados: number }
+
+    // Registrar auditoría
+    try {
+      await supabase.rpc('registrar_auditoria', {
+        p_tipo_evento: 'activacion_trabajadores',
+        p_entidad_id: jornadaId,
+        p_entidad_tipo: 'jornada',
+        p_motivo: null,
+        p_descripcion: `Activación de ${result.trabajadores_activados} trabajadores: ${cajeros.length} cajeros, ${bartenders.length} bartenders, ${meseros.length} meseros`,
+        p_datos_anteriores: null,
+        p_datos_nuevos: {
+          cajeros: cajeros.length,
+          bartenders: bartenders.length,
+          meseros: meseros.length,
+          trabajadores_activados: result.trabajadores_activados
+        },
+        p_jornada_id: jornadaId
+      })
+    } catch (e) {
+      console.error('[auditoría] No se pudo registrar activación:', e)
+    }
+
+    return result
   },
 
   /**

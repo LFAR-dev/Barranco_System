@@ -451,6 +451,7 @@ export const orderService = {
     if (pedidoActual.estado === 'cancelado') throw new Error('Este pedido ya fue cancelado')
     if (pedidoActual.estado === 'servido') throw new Error('Este pedido ya fue cobrado')
 
+    // Restaurar stock si estaba listo
     if (pedidoActual.estado === 'listo') {
       try {
         await supabase.rpc('restaurar_stock_cancelacion', {
@@ -462,51 +463,89 @@ export const orderService = {
       }
     }
 
+    // Actualizar pedido CON los campos de auditoría
     const { data, error } = await supabase
       .from('pedidos')
-      .update({ estado: 'cancelado', updated_at: new Date().toISOString() })
+      .update({ 
+        estado: 'cancelado', 
+        cancelado_por: canceladoPor,
+        motivo_cancelacion: motivo.trim(),
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', orderId)
       .select()
       .maybeSingle()
 
     if (error) throw new Error('No se pudo cancelar el pedido')
 
-        // Notificar al admin
+    // Registrar en auditoría
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      const { data: jornada } = await supabase
+        .from('jornadas')
+        .select('id')
+        .eq('estado', 'activa')
+        .maybeSingle()
+
+      await supabase.rpc('registrar_auditoria', {
+        p_tipo_evento: 'cancelacion_pedido',
+        p_entidad_id: orderId,
+        p_entidad_tipo: 'pedido',
+        p_motivo: motivo.trim(),
+        p_descripcion: `Cancelación de pedido - Mesa ${pedidoActual.mesa || 'N/A'} - Total: $${(pedidoActual.total || 0).toFixed(2)}`,
+        p_datos_anteriores: {
+          estado: pedidoActual.estado,
+          mesa: pedidoActual.mesa,
+          total: pedidoActual.total,
+          items: pedidoActual.items
+        },
+        p_datos_nuevos: {
+          estado: 'cancelado',
+          motivo: motivo.trim(),
+          cancelado_por: canceladoPor
+        },
+        p_jornada_id: jornada?.id || null
+      })
+    } catch (e) {
+      console.error('No se pudo registrar en auditoría:', e)
+    }
+
+    // Notificar al admin
     try {
       await notificationService.notificarAdmin({
         pedidoId: orderId,
         usuarioId: canceladoPor,
         tipo: 'pedido_cancelado',
-        mensaje: `Pedido cancelado: ${motivo}`,
-        motivo: motivo
+        mensaje: `Pedido cancelado - Mesa ${pedidoActual.mesa || 'N/A'} - Total: $${(pedidoActual.total || 0).toFixed(2)}`,
+        motivo: motivo.trim()
       })
     } catch (e) {
       console.error('No se pudo notificar al admin:', e)
     }
 
-    // 🆕 Notificar al mesero asignado
+    // Notificar al mesero asignado
     if (pedidoActual.mesero_id && pedidoActual.mesero_id !== canceladoPor) {
       try {
         await notificationService.notificarMesero({
           meseroId: pedidoActual.mesero_id,
           pedidoId: orderId,
           tipo: 'pedido_cancelado',
-          mensaje: `❌ Pedido de ${pedidoActual.mesa || 'Caja'} cancelado`,
-          motivo: motivo
+          mensaje: `Pedido de ${pedidoActual.mesa || 'Caja'} cancelado`,
+          motivo: motivo.trim()
         })
       } catch (e) {
         console.error('No se pudo notificar al mesero:', e)
       }
     }
 
-    // 🆕 Notificar al bartender asignado
+    // Notificar al bartender asignado
     if (pedidoActual.bartender_id) {
       try {
         await notificationService.notificarBartender({
           bartenderId: pedidoActual.bartender_id,
           pedidoId: orderId,
           tipo: 'pedido_cancelado',
-          mensaje: `❌ Pedido de ${pedidoActual.mesa || 'Caja'} cancelado`
+          mensaje: `Pedido de ${pedidoActual.mesa || 'Caja'} cancelado`
         })
       } catch (e) {
         console.error('No se pudo notificar al bartender:', e)

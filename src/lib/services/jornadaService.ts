@@ -90,13 +90,30 @@ export const jornadaService = {
       throw new Error(error.message || 'No se pudo abrir la jornada')
     }
 
-    return data as AbrirJornadaResult
+    const result = data as AbrirJornadaResult
+
+    // Registrar auditoría
+    await registrarAuditoriaEvento({
+      tipoEvento: 'apertura_turno',
+      entidadId: result.jornada_id,
+      entidadTipo: 'jornada',
+      motivo: null,
+      descripcion: `Apertura de turno: ${result.nombre}`,
+      datosNuevos: {
+        nombre: result.nombre,
+        fecha: result.fecha,
+        notas: notas || null
+      },
+      jornadaId: result.jornada_id
+    })
+
+    return result
   },
 
   /**
    * Cierra una jornada (solo admin). Cierra sesiones de caja abiertas.
    */
-  async cerrarJornada(jornadaId: string, notas?: string): Promise<CerrarJornadaResult> {
+    async cerrarJornada(jornadaId: string, notas?: string): Promise<CerrarJornadaResult> {
     const supabase = createClient()
     const { data, error } = await supabase.rpc('cerrar_jornada', {
       p_jornada_id: jornadaId,
@@ -108,7 +125,24 @@ export const jornadaService = {
       throw new Error(error.message || 'No se pudo cerrar la jornada')
     }
 
-    return data as CerrarJornadaResult
+    const result = data as CerrarJornadaResult
+
+    // Registrar auditoría
+    await registrarAuditoriaEvento({
+      tipoEvento: 'cierre_turno',
+      entidadId: jornadaId,
+      entidadTipo: 'jornada',
+      motivo: notas || null,
+      descripcion: `Cierre de turno. Pedidos pendientes: ${result.pedidos_pendientes}. Sesiones cerradas: ${result.sesiones_cerradas}`,
+      datosNuevos: {
+        pedidos_pendientes: result.pedidos_pendientes,
+        sesiones_cerradas: result.sesiones_cerradas,
+        notas: notas || null
+      },
+      jornadaId: jornadaId
+    })
+
+    return result
   },
 
   /**
@@ -233,7 +267,25 @@ export async function cerrarTurnoDefinitivo(
     throw new Error(error.message || 'No se pudo cerrar el turno')
   }
 
-  return data as CierreDefinitivoResult
+  const result = data as CierreDefinitivoResult
+
+  // Registrar auditoría de cierre definitivo
+  await registrarAuditoriaEvento({
+    tipoEvento: 'cierre_definitivo_turno',
+    entidadId: jornadaId,
+    entidadTipo: 'jornada',
+    motivo: notas || null,
+    descripcion: `Cierre definitivo del turno. Trabajadores notificados: ${result.trabajadores_notificados}. Sesiones cerradas: ${result.sesiones_cerradas}. Pedidos pendientes: ${result.pedidos_pendientes}.`,
+    datosNuevos: {
+      pedidos_pendientes: result.pedidos_pendientes,
+      sesiones_cerradas: result.sesiones_cerradas,
+      trabajadores_notificados: result.trabajadores_notificados,
+      notas: notas || null
+    },
+    jornadaId: jornadaId
+  })
+
+  return result
 }
 
 /**
@@ -248,3 +300,41 @@ export async function turnoEstaAbierto(): Promise<boolean> {
   }
   return data === true
 }
+
+// ============================================================
+// AUDITORÍA INTERNA (helpers)
+// ============================================================
+
+/**
+ * Registra un evento de auditoría desde el servicio de jornada.
+ * No lanza error si falla — es best-effort.
+ */
+async function registrarAuditoriaEvento(data: {
+  tipoEvento: string
+  entidadId?: string | null
+  entidadTipo?: string | null
+  motivo?: string | null
+  descripcion: string
+  datosAnteriores?: any
+  datosNuevos?: any
+  jornadaId?: string | null
+}): Promise<void> {
+  try {
+    const supabase = createClient()
+    await supabase.rpc('registrar_auditoria', {
+      p_tipo_evento: data.tipoEvento,
+      p_entidad_id: data.entidadId || null,
+      p_entidad_tipo: data.entidadTipo || null,
+      p_motivo: data.motivo || null,
+      p_descripcion: data.descripcion,
+      p_datos_anteriores: data.datosAnteriores || null,
+      p_datos_nuevos: data.datosNuevos || null,
+      p_jornada_id: data.jornadaId || null
+    })
+  } catch (e) {
+    console.error('[auditoría] No se pudo registrar:', e)
+  }
+}
+
+// Exportamos para uso interno (no como parte de la API pública)
+export { registrarAuditoriaEvento }
