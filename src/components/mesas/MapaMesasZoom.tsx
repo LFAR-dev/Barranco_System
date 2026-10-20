@@ -2,18 +2,28 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Loader2, RefreshCw, ZoomIn, ZoomOut, Maximize2,
-  Grid3x3, Map
+  Loader2, RefreshCw, ZoomIn, ZoomOut, Maximize2, Map
 } from 'lucide-react'
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch'
 import { Button } from '@/components/ui/button'
-import { mesaService, Mesa } from '@/lib/services/mesaService'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { mesaService, Mesa, CategoriaMesa } from '@/lib/services/mesaService'
 import { createClient } from '@/lib/supabase/client'
 import { MesaConSillas } from './MesaConSillas'
 import { MesaCardEditable } from './MesaCardEditable'
 import { ElementoMapa } from './ElementoMapa'
 import { GridOverlay } from './GridOverlay'
 import { Minimapa } from './Minimapa'
+import { EditorToolbar, HerramientaEditor } from './EditorToolbar'
+import { useEditorHistory } from '@/hooks/useEditorHistory'
+import { useEditorKeyboard } from '@/hooks/useEditorKeyboard'
 import { useToast } from '@/hooks/use-toast'
 
 interface MapaMesasZoomProps {
@@ -29,22 +39,45 @@ export function MapaMesasZoom({
   editable = false,
   isEditing = false,
   mesaSeleccionadaId,
-  showGrid = false
+  showGrid: showGridProp = false
 }: MapaMesasZoomProps) {
-  const [mesas, setMesas] = useState<Mesa[]>([])
+  const [mesasDB, setMesasDB] = useState<Mesa[]>([])
   const [elementos, setElementos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
+  const [herramienta, setHerramienta] = useState<HerramientaEditor>('seleccionar')
+  const [showGrid, setShowGrid] = useState(showGridProp)
+  const [guardando, setGuardando] = useState(false)
+  const [nuevaMesaCoords, setNuevaMesaCoords] = useState<{ x: number; y: number } | null>(null)
   const [viewport, setViewport] = useState<{ x: number; y: number; width: number; height: number }>({
-    x: 0,
-    y: 0,
-    width: 100,
-    height: 100
+    x: 0, y: 0, width: 100, height: 100
   })
+  
   const transformRef = useRef<ReactZoomPanPinchRef>(null)
+  const mapContainerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const { toast } = useToast()
 
+  // Historial de cambios para undo/redo
+  const {
+    state: mesas,
+    setState: setMesas,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    resetHistory,
+    hasChanges
+  } = useEditorHistory<Mesa[]>([])
+
+  // Contar cambios pendientes comparando con la BD
+  const cambiosPendientes = mesas.filter(m => {
+    const original = mesasDB.find(o => o.id === m.id)
+    if (!original) return true // mesa nueva
+    return JSON.stringify(original) !== JSON.stringify(m)
+  }).length + mesasDB.filter(o => !mesas.find(m => m.id === o.id)).length
+
+  // Cargar datos de BD
   const cargarDatos = useCallback(async () => {
     setLoading(true)
     try {
@@ -52,25 +85,31 @@ export function MapaMesasZoom({
         mesaService.getAll(true),
         mesaService.getElementosMapa()
       ])
-      setMesas(mesasData)
+      setMesasDB(mesasData)
+      setMesas(mesasData, { addToHistory: false })
       setElementos(elementosData)
     } catch (error) {
       console.error('Error cargando mapa:', error)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setMesas])
 
   useEffect(() => {
     cargarDatos()
+  }, [cargarDatos])
+
+  // Realtime: solo cuando NO está editando
+  useEffect(() => {
+    if (isEditing) return
 
     const channel = supabase
-      .channel('mapa_mesas_zoom_changes')
+      .channel('mapa_zoom_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, () => {
-        if (!isEditing) cargarDatos()
+        cargarDatos()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mapa_elementos' }, () => {
-        if (!isEditing) cargarDatos()
+        cargarDatos()
       })
       .subscribe()
 
@@ -79,48 +118,209 @@ export function MapaMesasZoom({
     }
   }, [cargarDatos, supabase, isEditing])
 
-  const handleDragEnd = async (id: string, x: number, y: number) => {
-    setMesas(prev => prev.map(m => m.id === id ? { ...m, mapa_x: x, mapa_y: y } : m))
-    
+  // ============================================================
+  // HANDLERS DEL EDITOR
+  // ============================================================
+
+  const handleDragEnd = (id: string, x: number, y: number) => {
+    // Actualizar en el historial (sin agregar cada movimiento, solo el final)
+    const nuevasMesas = mesas.map(m => m.id === id ? { ...m, mapa_x: x, mapa_y: y } : m)
+    setMesas(nuevasMesas)
+  }
+
+  const handleGuardarCambios = async () => {
+    setGuardando(true)
     try {
-      await mesaService.actualizarPosicion(id, x, y)
+      // 1. Actualizar mesas existentes
+      for (const mesa of mesas) {
+        const original = mesasDB.find(o => o.id === mesa.id)
+        if (!original) continue
+        if (JSON.stringify(original) !== JSON.stringify(mesa)) {
+          await mesaService.actualizar(mesa.id, {
+            numero: mesa.numero,
+            categoria: mesa.categoria,
+            capacidad: mesa.capacidad,
+            estado: mesa.estado,
+            mapa_x: mesa.mapa_x,
+            mapa_y: mesa.mapa_y,
+            mapa_ancho: mesa.mapa_ancho,
+            mapa_alto: mesa.mapa_alto,
+            mapa_rotacion: mesa.mapa_rotacion
+          })
+        }
+      }
+
+      // 2. Detectar mesas eliminadas
+      for (const original of mesasDB) {
+        if (!mesas.find(m => m.id === original.id)) {
+          await mesaService.eliminar(original.id)
+        }
+      }
+
+      // 3. Crear mesas nuevas (si las hay, ya se crearon con mesaService.crear)
+      // Las mesas nuevas se crean INMEDIATAMENTE en handleCrearMesa
+
       toast({
-        title: 'Posición guardada',
-        description: 'La nueva ubicación ha sido guardada',
-        variant: 'success',
-        duration: 2000
+        title: 'Cambios guardados',
+        description: 'El mapa se ha actualizado correctamente',
+        variant: 'success'
       })
-    } catch (error) {
+
+      await cargarDatos()
+      resetHistory()
+    } catch (error: any) {
       toast({
-        title: 'Error',
-        description: 'No se pudo guardar la posición',
+        title: 'Error al guardar',
+        description: error.message || 'No se pudieron guardar los cambios',
         variant: 'destructive'
       })
-      cargarDatos()
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const handleDescartarCambios = () => {
+    if (!confirm('¿Descartar todos los cambios no guardados?')) return
+    setMesas(mesasDB, { addToHistory: false })
+    resetHistory()
+    toast({
+      title: 'Cambios descartados',
+      description: 'El mapa volvió al último estado guardado',
+      variant: 'default'
+    })
+  }
+
+  const handleDuplicarMesa = async () => {
+    if (!mesaSeleccionada) return
+
+    try {
+      const nuevaMesa = await mesaService.crear({
+        numero: `${mesaSeleccionada.numero}-COPIA`,
+        categoria: mesaSeleccionada.categoria,
+        capacidad: mesaSeleccionada.capacidad,
+        mapa_x: Math.min(mesaSeleccionada.mapa_x + 3, 95),
+        mapa_y: Math.min(mesaSeleccionada.mapa_y + 3, 95)
+      })
+
+      toast({
+        title: 'Mesa duplicada',
+        description: `Se creó ${nuevaMesa.numero}`,
+        variant: 'success'
+      })
+
+      await cargarDatos()
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'No se pudo duplicar la mesa',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const handleEliminarMesa = async () => {
+    if (!mesaSeleccionada) return
+    if (!confirm(`¿Eliminar la mesa ${mesaSeleccionada.numero}? Se desactivará (soft delete).`)) return
+
+    try {
+      await mesaService.eliminar(mesaSeleccionada.id)
+      toast({
+        title: 'Mesa eliminada',
+        description: `Mesa ${mesaSeleccionada.numero} desactivada`,
+        variant: 'success'
+      })
+      setMesaSeleccionada(null)
+      await cargarDatos()
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'No se pudo eliminar la mesa',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const handleClickEnMapa = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isEditing || herramienta !== 'agregar_mesa') return
+
+    const rect = mapContainerRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    const x = ((e.clientX - rect.left) / rect.width) * 100
+    const y = ((e.clientY - rect.top) / rect.height) * 100
+
+    setNuevaMesaCoords({ x, y })
+  }
+
+  const handleCrearMesaConfirm = async (data: {
+    numero: string
+    categoria: CategoriaMesa
+    capacidad: number
+  }) => {
+    if (!nuevaMesaCoords) return
+
+    try {
+      await mesaService.crear({
+        numero: data.numero,
+        categoria: data.categoria,
+        capacidad: data.capacidad,
+        mapa_x: nuevaMesaCoords.x,
+        mapa_y: nuevaMesaCoords.y
+      })
+
+      toast({
+        title: 'Mesa creada',
+        description: `Mesa ${data.numero} agregada al mapa`,
+        variant: 'success'
+      })
+
+      setNuevaMesaCoords(null)
+      await cargarDatos()
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'No se pudo crear la mesa',
+        variant: 'destructive'
+      })
     }
   }
 
   const handleSelectFromEdit = (mesa: Mesa) => {
     setMesaSeleccionada(mesa)
-    onMesaClick?.(mesa)
   }
 
-  // Actualizar viewport según el zoom/posición actual
+  // ============================================================
+  // ATAJOS DE TECLADO
+  // ============================================================
+
+  useEditorKeyboard({
+    enabled: isEditing,
+    onHerramientaChange: setHerramienta,
+    onUndo: undo,
+    onRedo: redo,
+    onSave: handleGuardarCambios,
+    onToggleGrid: () => setShowGrid(g => !g),
+    onDelete: mesaSeleccionada ? handleEliminarMesa : undefined,
+    onEscape: () => {
+      setHerramienta('seleccionar')
+      setMesaSeleccionada(null)
+    }
+  })
+
+  // ============================================================
+  // MINIMAPA Y ZOOM
+  // ============================================================
+
   const handleTransform = (ref: ReactZoomPanPinchRef) => {
     const { scale, positionX, positionY } = ref.state
     const containerWidth = ref.instance.wrapperComponent?.offsetWidth || 1
     const containerHeight = ref.instance.wrapperComponent?.offsetHeight || 1
-    
-    // Convertir a porcentaje del mapa total
-    const contentWidth = (containerWidth * scale)
-    const contentHeight = (containerHeight * scale)
-    
+    const contentWidth = containerWidth * scale
+    const contentHeight = containerHeight * scale
     const viewportWidth = (100 * containerWidth) / contentWidth
     const viewportHeight = (100 * containerHeight) / contentHeight
-    
     const viewportX = (-positionX / contentWidth) * 100
     const viewportY = (-positionY / contentHeight) * 100
-    
     setViewport({
       x: Math.max(0, Math.min(100 - viewportWidth, viewportX)),
       y: Math.max(0, Math.min(100 - viewportHeight, viewportY)),
@@ -133,14 +333,10 @@ export function MapaMesasZoom({
     if (!transformRef.current) return
     const { instance } = transformRef.current
     if (!instance.wrapperComponent) return
-    
     const containerWidth = instance.wrapperComponent.offsetWidth
     const containerHeight = instance.wrapperComponent.offsetHeight
-    
-    // Centrar en el punto clickeado
     const newPositionX = -(x / 100) * containerWidth + containerWidth / 2
     const newPositionY = -(y / 100) * containerHeight + containerHeight / 2
-    
     transformRef.current.setTransform(newPositionX, newPositionY, transformRef.current.state.scale)
   }
 
@@ -200,6 +396,28 @@ export function MapaMesasZoom({
         </Button>
       </div>
 
+      {/* TOOLBAR DE EDICIÓN (solo en modo edición) */}
+      {isEditing && (
+        <EditorToolbar
+          herramienta={herramienta}
+          onHerramientaChange={setHerramienta}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={undo}
+          onRedo={redo}
+          hasChanges={hasChanges}
+          cambiosPendientes={cambiosPendientes}
+          onGuardar={handleGuardarCambios}
+          onDescartar={handleDescartarCambios}
+          showGrid={showGrid}
+          onToggleGrid={() => setShowGrid(g => !g)}
+          mesaSeleccionada={!!mesaSeleccionada}
+          onDuplicar={mesaSeleccionada ? handleDuplicarMesa : undefined}
+          onEliminar={mesaSeleccionada ? handleEliminarMesa : undefined}
+          guardando={guardando}
+        />
+      )}
+
       {/* ÁREA ZOOMABLE */}
       <TransformWrapper
         ref={transformRef}
@@ -208,12 +426,14 @@ export function MapaMesasZoom({
         maxScale={3}
         wheel={{ step: 0.15 }}
         doubleClick={{ disabled: true }}
-        panning={{ disabled: isEditing }} // Deshabilitar pan si está editando mesas
+        panning={{ 
+          disabled: isEditing || herramienta === 'agregar_mesa'
+        }}
         onTransform={handleTransform}
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
-            {/* Controles de zoom (flotantes) */}
+            {/* Controles de zoom */}
             <div className="absolute top-24 right-4 z-20 flex flex-col gap-2">
               <Button
                 variant="outline"
@@ -244,13 +464,15 @@ export function MapaMesasZoom({
               </Button>
             </div>
 
-            {/* Área del mapa */}
             <TransformComponent
               wrapperClass="!w-full !h-full"
               contentClass="!w-full !h-full"
             >
               <div
-                className="relative w-full touch-none"
+                ref={mapContainerRef}
+                className={`relative w-full touch-none ${
+                  isEditing && herramienta === 'agregar_mesa' ? 'cursor-crosshair' : ''
+                }`}
                 style={{
                   aspectRatio: '16/9',
                   minHeight: '500px',
@@ -261,16 +483,14 @@ export function MapaMesasZoom({
                     linear-gradient(135deg, #3d2817 0%, #2a1f1a 50%, #1a1410 100%)
                   `
                 }}
+                onClick={handleClickEnMapa}
               >
-                {/* Grid en modo edición */}
                 {showGrid && <GridOverlay size={5} />}
 
-                {/* Elementos estáticos */}
                 {elementos.map((el) => (
                   <ElementoMapa key={el.id} elemento={el} />
                 ))}
 
-                {/* Mesas */}
                 {mesas.map((mesa) => {
                   if (isEditing) {
                     return (
@@ -296,7 +516,6 @@ export function MapaMesasZoom({
               </div>
             </TransformComponent>
 
-            {/* Minimapa */}
             <div className="absolute bottom-4 right-4 z-20">
               <Minimapa
                 mesas={mesas}
@@ -313,8 +532,95 @@ export function MapaMesasZoom({
         <span>{mesas.length} mesas · {elementos.length} elementos</span>
         <span className="flex items-center gap-2">
           <Map className="h-3 w-3" />
-          Arrastra para mover · Rueda para zoom
+          {isEditing ? 'V seleccionar · M agregar · G grid · Ctrl+Z/Y undo · Ctrl+S guardar' : 'Arrastra para mover · Rueda para zoom'}
         </span>
+      </div>
+
+      {/* Modal de crear mesa al hacer click */}
+      <Dialog open={!!nuevaMesaCoords} onOpenChange={(open) => !open && setNuevaMesaCoords(null)}>
+        <DialogContent className="max-w-md w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle>Nueva Mesa</DialogTitle>
+          </DialogHeader>
+          <FormularioNuevaMesa
+            onConfirm={handleCrearMesaConfirm}
+            onCancel={() => setNuevaMesaCoords(null)}
+            sugerenciaNumero={`N${mesas.length + 1}`}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ============================================================
+// SUBCOMPONENTE: Formulario de nueva mesa
+// ============================================================
+
+function FormularioNuevaMesa({
+  onConfirm,
+  onCancel,
+  sugerenciaNumero
+}: {
+  onConfirm: (data: { numero: string; categoria: CategoriaMesa; capacidad: number }) => void
+  onCancel: () => void
+  sugerenciaNumero: string
+}) {
+  const [numero, setNumero] = useState(sugerenciaNumero)
+  const [categoria, setCategoria] = useState<CategoriaMesa>('social')
+  const [capacidad, setCapacidad] = useState(4)
+
+  return (
+    <div className="space-y-4 mt-2">
+      <div>
+        <Label htmlFor="numero-nueva">Número / Identificador</Label>
+        <Input
+          id="numero-nueva"
+          value={numero}
+          onChange={(e) => setNumero(e.target.value.toUpperCase())}
+          placeholder="Ej: T12, E6, X1..."
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label htmlFor="categoria-nueva">Categoría</Label>
+          <select
+            id="categoria-nueva"
+            value={categoria}
+            onChange={(e) => setCategoria(e.target.value as CategoriaMesa)}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            <option value="especial">Especial</option>
+            <option value="social">Social</option>
+            <option value="privada">Privada</option>
+            <option value="terraza">Terraza</option>
+            <option value="temporal">Temporal</option>
+          </select>
+        </div>
+        <div>
+          <Label htmlFor="capacidad-nueva">Capacidad</Label>
+          <Input
+            id="capacidad-nueva"
+            type="number"
+            min="1"
+            value={capacidad}
+            onChange={(e) => setCapacidad(parseInt(e.target.value) || 4)}
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <Button variant="outline" onClick={onCancel} className="flex-1">
+          Cancelar
+        </Button>
+        <Button
+          onClick={() => onConfirm({ numero, categoria, capacidad })}
+          disabled={!numero.trim()}
+          className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+        >
+          Crear Mesa
+        </Button>
       </div>
     </div>
   )
