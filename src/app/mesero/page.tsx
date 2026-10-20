@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Coffee, Clock, CheckCircle, UserRound, Loader2, Utensils } from 'lucide-react'
+import { Plus, Coffee, Clock, CheckCircle, UserRound, Loader2, Utensils, MapPin } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,14 +12,17 @@ import { orderService, Order } from '@/lib/services/orderService'
 import { useToast } from '@/hooks/use-toast'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { useTurnoActivo } from '@/hooks/useTurnoActivo'
+import { useGeolocation } from '@/hooks/useGeolocation'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
 import { AvisoNoActivo } from '@/components/shared/AvisoNoActivo'
 import { ToggleDisponibilidad } from '@/components/shared/ToggleDisponibilidad'
 import { SalirTurnoModal } from '@/components/shared/SalirTurnoModal'
+import { GPSPermissionModal } from '@/components/mesero/GPSPermissionModal'
 import { AppShell } from '@/components/layout/AppShell'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { SidebarSection } from '@/components/layout/AppSidebar'
 import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
+
 
 const SECTIONS: SidebarSection[] = [
   {
@@ -37,18 +40,46 @@ export default function MeseroDashboard() {
   const { toast } = useToast()
   const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
+  
+  // GPS
+  const { 
+    estado: gpsEstado, 
+    solicitar: solicitarGPS, 
+    detener: detenerGPS,
+    precision: gpsPrecision
+  } = useGeolocation({
+    usuarioId: user?.id,
+    autoStart: false
+  })
+
   const [orders, setOrders] = useState<Order[]>([])
   const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [showGPSModal, setShowGPSModal] = useState(false)
+  const [hasAskedGPS, setHasAskedGPS] = useState(false)
 
   useEffect(() => {
     if (user) {
       fetchOrders()
-      // Polling cada 30s para ver pedidos nuevos
       const interval = setInterval(fetchOrders, 30000)
       return () => clearInterval(interval)
     }
   }, [user])
+
+  // Verificar si ya pidió permiso GPS antes
+  useEffect(() => {
+    if (!user?.id) return
+    const asked = localStorage.getItem(`gps_asked_${user.id}`)
+    if (!asked) {
+      setShowGPSModal(true)
+    } else {
+      setHasAskedGPS(true)
+      // Si ya aceptó antes, auto-iniciar
+      if (asked === 'accepted') {
+        solicitarGPS()
+      }
+    }
+  }, [user?.id])
 
   const fetchOrders = async () => {
     setLoading(true)
@@ -79,13 +110,49 @@ export default function MeseroDashboard() {
   }
 
   const handleLogout = async () => {
+    detenerGPS()
     await logout()
     toast({
-      title: '👋 Sesión cerrada',
+      title: 'Sesión cerrada',
       description: 'Has cerrado sesión correctamente',
       variant: 'default'
     })
     router.push('/')
+  }
+
+  const handleAcceptGPS = () => {
+    setShowGPSModal(false)
+    setHasAskedGPS(true)
+    if (user?.id) {
+      localStorage.setItem(`gps_asked_${user.id}`, 'accepted')
+    }
+    solicitarGPS()
+  }
+
+  const handleRejectGPS = () => {
+    setShowGPSModal(false)
+    setHasAskedGPS(true)
+    if (user?.id) {
+      localStorage.setItem(`gps_asked_${user.id}`, 'rejected')
+    }
+    toast({
+      title: 'Ubicación no compartida',
+      description: 'Puedes activarla después desde el botón de ubicación',
+      variant: 'default'
+    })
+  }
+
+  const handleToggleGPS = () => {
+    if (gpsEstado === 'activo') {
+      detenerGPS()
+      toast({
+        title: 'Ubicación desactivada',
+        description: 'Ya no compartes tu ubicación',
+        variant: 'default'
+      })
+    } else {
+      solicitarGPS()
+    }
   }
 
   const nombreCompleto = `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
@@ -98,19 +165,56 @@ export default function MeseroDashboard() {
     )
   }
 
-  // Mis pedidos: los que tienen mi user.id como mesero_id
   const misPedidos = orders.filter(o => o.mesero_id === user?.id)
-  
-  // Pedidos activos (no cobrados ni cancelados)
   const pedidosActivos = misPedidos.filter(o => 
     o.estado === 'pendiente' || o.estado === 'preparando' || o.estado === 'listo'
   )
-  
-  // Pedidos listos para recoger
   const listosParaRecoger = misPedidos.filter(o => o.estado === 'listo')
-  
-  // Pedidos que aún no empieza el bartender
   const pendientes = misPedidos.filter(o => o.estado === 'pendiente' || o.estado === 'preparando')
+
+  // Configuración visual del botón GPS
+  const getGPSButtonConfig = () => {
+    switch (gpsEstado) {
+      case 'activo':
+        return {
+          className: 'text-green-600 bg-green-50 hover:bg-green-100 border-green-200',
+          icon: <MapPin className="h-4 w-4" />,
+          title: `Ubicación compartida (precisión: ${gpsPrecision ? Math.round(gpsPrecision) + 'm' : 'alta'})`
+        }
+      case 'solicitando':
+        return {
+          className: 'text-amber-600 bg-amber-50 border-amber-200',
+          icon: <Loader2 className="h-4 w-4 animate-spin" />,
+          title: 'Solicitando permiso de ubicación...'
+        }
+      case 'denegado':
+        return {
+          className: 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200',
+          icon: <MapPin className="h-4 w-4" />,
+          title: 'Permiso de ubicación denegado - click para reintentar'
+        }
+      case 'error':
+        return {
+          className: 'text-red-600 bg-red-50 border-red-200',
+          icon: <MapPin className="h-4 w-4" />,
+          title: 'Error de ubicación - click para reintentar'
+        }
+      case 'no_soportado':
+        return {
+          className: 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed',
+          icon: <MapPin className="h-4 w-4" />,
+          title: 'Este dispositivo no soporta geolocalización'
+        }
+      default:
+        return {
+          className: 'text-gray-600 hover:bg-gray-100 border-gray-200',
+          icon: <MapPin className="h-4 w-4" />,
+          title: 'Activar ubicación GPS'
+        }
+    }
+  }
+
+  const gpsButton = getGPSButtonConfig()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -130,7 +234,22 @@ export default function MeseroDashboard() {
         sidebarHeaderSlot={user?.id ? <ToggleDisponibilidad rol="mesero" usuarioId={user.id} /> : null}
         headerRight={
           <>
-          <NotificationBellUniversal rol="mesero" usuarioId={user?.id || ''} />
+            {/* Botón GPS */}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleToggleGPS}
+              disabled={gpsEstado === 'no_soportado' || gpsEstado === 'solicitando'}
+              className={`relative ${gpsButton.className}`}
+              title={gpsButton.title}
+            >
+              {gpsButton.icon}
+              {gpsEstado === 'activo' && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              )}
+            </Button>
+
+            <NotificationBellUniversal rol="mesero" usuarioId={user?.id || ''} />
             {user?.id && (
               <div className="hidden lg:block">
                 <ToggleDisponibilidad rol="mesero" usuarioId={user.id} />
@@ -150,7 +269,15 @@ export default function MeseroDashboard() {
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
                 ¡Hola, {user?.nombre || user?.email?.split('@')[0] || 'Mesero'}!
               </h1>
-              <p className="text-sm text-gray-500">Gestiona pedidos y toma órdenes</p>
+              <p className="text-sm text-gray-500 flex items-center gap-2 flex-wrap">
+                Gestiona pedidos y toma órdenes
+                {gpsEstado === 'activo' && (
+                  <Badge className="bg-green-100 text-green-700 text-[10px]">
+                    <MapPin className="h-2.5 w-2.5 mr-1" />
+                    Ubicación activa
+                  </Badge>
+                )}
+              </p>
             </div>
             {turnoActivo ? (
               <Link href="/mesero/orders/new">
@@ -169,7 +296,6 @@ export default function MeseroDashboard() {
             )}
           </div>
 
-          {/* Banner destacado de pedidos listos para recoger */}
           {listosParaRecoger.length > 0 && (
             <div className="mb-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-3 sm:p-4 flex items-center gap-3">
               <div className="p-2 bg-green-100 rounded-lg shrink-0 animate-pulse">
@@ -228,11 +354,10 @@ export default function MeseroDashboard() {
             </Card>
           </div>
 
-          {/* Lista de pedidos activos */}
           <div className="mt-4 sm:mt-6">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base sm:text-lg">📋 Mis Pedidos Activos</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Mis Pedidos Activos</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">
                   Pedidos en curso asignados a ti
                 </CardDescription>
@@ -280,7 +405,6 @@ export default function MeseroDashboard() {
                             </span>
                           </div>
 
-                          {/* Items */}
                           <div className="flex flex-wrap gap-1 mt-1">
                             {order.items?.map((item: any, idx: number) => (
                               <span 
@@ -292,7 +416,6 @@ export default function MeseroDashboard() {
                             ))}
                           </div>
 
-                          {/* Mensaje especial si está listo */}
                           {esListo && (
                             <div className="mt-2 pt-2 border-t border-green-200 flex items-center gap-2 text-xs text-green-800">
                               <Utensils className="h-3 w-3" />
@@ -309,6 +432,13 @@ export default function MeseroDashboard() {
           </div>
         </div>
       </AppShell>
+
+      {/* Modal de permiso GPS */}
+      <GPSPermissionModal
+        isOpen={showGPSModal}
+        onAccept={handleAcceptGPS}
+        onReject={handleRejectGPS}
+      />
 
       <SalirTurnoModal
         isOpen={isSalirTurnoOpen}

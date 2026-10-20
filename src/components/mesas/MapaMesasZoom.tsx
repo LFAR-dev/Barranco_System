@@ -23,6 +23,8 @@ import { GridOverlay } from './GridOverlay'
 import { Minimapa } from './Minimapa'
 import { EditorToolbar, HerramientaEditor } from './EditorToolbar'
 import { SnappingGuides } from './SnappingGuides'
+import { AvatarMesero } from './AvatarMesero'
+import { useMeserosActivos } from '@/hooks/useMeserosActivos'
 import { useEditorHistory } from '@/hooks/useEditorHistory'
 import { useEditorKeyboard } from '@/hooks/useEditorKeyboard'
 import { useToast } from '@/hooks/use-toast'
@@ -59,6 +61,7 @@ export function MapaMesasZoom({
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const { toast } = useToast()
+  const { meseros: meserosActivos } = useMeserosActivos()
 
   const {
     state: mesas,
@@ -503,6 +506,22 @@ export function MapaMesasZoom({
                         snapEnabled={showGrid}
                       />
                     )
+                  }{/* Avatares de meseros activos */}
+                  {
+                    !isEditing && meserosActivos.map((mesero) => {
+                      // Posición: sobre la mesa que atiende
+                      const mesaAtendiendo = mesas.find(m => m.id === mesero.mesa_atendiendo_id)
+                      if (!mesaAtendiendo) return null
+
+                      return (
+                        <AvatarMesero
+                          key={mesero.usuario_id}
+                          mesero={mesero}
+                          posicionX={mesaAtendiendo.mapa_x + mesaAtendiendo.mapa_ancho / 2}
+                          posicionY={mesaAtendiendo.mapa_y + mesaAtendiendo.mapa_alto / 2}
+                        />
+                      )
+                    })
                   }
 
                   return (
