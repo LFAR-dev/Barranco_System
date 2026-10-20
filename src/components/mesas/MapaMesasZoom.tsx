@@ -22,6 +22,7 @@ import { ElementoMapa } from './ElementoMapa'
 import { GridOverlay } from './GridOverlay'
 import { Minimapa } from './Minimapa'
 import { EditorToolbar, HerramientaEditor } from './EditorToolbar'
+import { SnappingGuides } from './SnappingGuides'
 import { useEditorHistory } from '@/hooks/useEditorHistory'
 import { useEditorKeyboard } from '@/hooks/useEditorKeyboard'
 import { useToast } from '@/hooks/use-toast'
@@ -49,6 +50,7 @@ export function MapaMesasZoom({
   const [showGrid, setShowGrid] = useState(showGridProp)
   const [guardando, setGuardando] = useState(false)
   const [nuevaMesaCoords, setNuevaMesaCoords] = useState<{ x: number; y: number } | null>(null)
+  const [guides, setGuides] = useState<Array<{ orientation: 'horizontal' | 'vertical'; position: number }>>([])
   const [viewport, setViewport] = useState<{ x: number; y: number; width: number; height: number }>({
     x: 0, y: 0, width: 100, height: 100
   })
@@ -58,7 +60,6 @@ export function MapaMesasZoom({
   const supabase = createClient()
   const { toast } = useToast()
 
-  // Historial de cambios para undo/redo
   const {
     state: mesas,
     setState: setMesas,
@@ -70,14 +71,22 @@ export function MapaMesasZoom({
     hasChanges
   } = useEditorHistory<Mesa[]>([])
 
-  // Contar cambios pendientes comparando con la BD
   const cambiosPendientes = mesas.filter(m => {
     const original = mesasDB.find(o => o.id === m.id)
-    if (!original) return true // mesa nueva
-    return JSON.stringify(original) !== JSON.stringify(m)
+    if (!original) return true
+    return (
+      original.mapa_x !== m.mapa_x ||
+      original.mapa_y !== m.mapa_y ||
+      original.mapa_ancho !== m.mapa_ancho ||
+      original.mapa_alto !== m.mapa_alto ||
+      original.mapa_rotacion !== m.mapa_rotacion ||
+      original.numero !== m.numero ||
+      original.estado !== m.estado ||
+      original.capacidad !== m.capacidad ||
+      original.categoria !== m.categoria
+    )
   }).length + mesasDB.filter(o => !mesas.find(m => m.id === o.id)).length
 
-  // Cargar datos de BD
   const cargarDatos = useCallback(async () => {
     setLoading(true)
     try {
@@ -99,10 +108,8 @@ export function MapaMesasZoom({
     cargarDatos()
   }, [cargarDatos])
 
-  // Realtime: solo cuando NO está editando
   useEffect(() => {
     if (isEditing) return
-
     const channel = supabase
       .channel('mapa_zoom_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, () => {
@@ -112,26 +119,39 @@ export function MapaMesasZoom({
         cargarDatos()
       })
       .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [cargarDatos, supabase, isEditing])
 
   // ============================================================
-  // HANDLERS DEL EDITOR
+  // HANDLERS
   // ============================================================
 
-  const handleDragEnd = (id: string, x: number, y: number) => {
-    // Actualizar en el historial (sin agregar cada movimiento, solo el final)
-    const nuevasMesas = mesas.map(m => m.id === id ? { ...m, mapa_x: x, mapa_y: y } : m)
+  const handleDragEnd = (
+    id: string,
+    x: number,
+    y: number,
+    ancho?: number,
+    alto?: number,
+    rotacion?: number
+  ) => {
+    const nuevasMesas = mesas.map(m => 
+      m.id === id 
+        ? { 
+            ...m, 
+            mapa_x: x, 
+            mapa_y: y,
+            ...(ancho !== undefined && { mapa_ancho: ancho }),
+            ...(alto !== undefined && { mapa_alto: alto }),
+            ...(rotacion !== undefined && { mapa_rotacion: rotacion })
+          } 
+        : m
+    )
     setMesas(nuevasMesas)
   }
 
   const handleGuardarCambios = async () => {
     setGuardando(true)
     try {
-      // 1. Actualizar mesas existentes
       for (const mesa of mesas) {
         const original = mesasDB.find(o => o.id === mesa.id)
         if (!original) continue
@@ -150,15 +170,11 @@ export function MapaMesasZoom({
         }
       }
 
-      // 2. Detectar mesas eliminadas
       for (const original of mesasDB) {
         if (!mesas.find(m => m.id === original.id)) {
           await mesaService.eliminar(original.id)
         }
       }
-
-      // 3. Crear mesas nuevas (si las hay, ya se crearon con mesaService.crear)
-      // Las mesas nuevas se crean INMEDIATAMENTE en handleCrearMesa
 
       toast({
         title: 'Cambios guardados',
@@ -192,7 +208,6 @@ export function MapaMesasZoom({
 
   const handleDuplicarMesa = async () => {
     if (!mesaSeleccionada) return
-
     try {
       const nuevaMesa = await mesaService.crear({
         numero: `${mesaSeleccionada.numero}-COPIA`,
@@ -201,13 +216,11 @@ export function MapaMesasZoom({
         mapa_x: Math.min(mesaSeleccionada.mapa_x + 3, 95),
         mapa_y: Math.min(mesaSeleccionada.mapa_y + 3, 95)
       })
-
       toast({
         title: 'Mesa duplicada',
         description: `Se creó ${nuevaMesa.numero}`,
         variant: 'success'
       })
-
       await cargarDatos()
     } catch (error: any) {
       toast({
@@ -220,8 +233,7 @@ export function MapaMesasZoom({
 
   const handleEliminarMesa = async () => {
     if (!mesaSeleccionada) return
-    if (!confirm(`¿Eliminar la mesa ${mesaSeleccionada.numero}? Se desactivará (soft delete).`)) return
-
+    if (!confirm(`¿Eliminar la mesa ${mesaSeleccionada.numero}? Se desactivará.`)) return
     try {
       await mesaService.eliminar(mesaSeleccionada.id)
       toast({
@@ -242,13 +254,10 @@ export function MapaMesasZoom({
 
   const handleClickEnMapa = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditing || herramienta !== 'agregar_mesa') return
-
     const rect = mapContainerRef.current?.getBoundingClientRect()
     if (!rect) return
-
     const x = ((e.clientX - rect.left) / rect.width) * 100
     const y = ((e.clientY - rect.top) / rect.height) * 100
-
     setNuevaMesaCoords({ x, y })
   }
 
@@ -258,7 +267,6 @@ export function MapaMesasZoom({
     capacidad: number
   }) => {
     if (!nuevaMesaCoords) return
-
     try {
       await mesaService.crear({
         numero: data.numero,
@@ -267,13 +275,11 @@ export function MapaMesasZoom({
         mapa_x: nuevaMesaCoords.x,
         mapa_y: nuevaMesaCoords.y
       })
-
       toast({
         title: 'Mesa creada',
         description: `Mesa ${data.numero} agregada al mapa`,
         variant: 'success'
       })
-
       setNuevaMesaCoords(null)
       await cargarDatos()
     } catch (error: any) {
@@ -289,10 +295,6 @@ export function MapaMesasZoom({
     setMesaSeleccionada(mesa)
   }
 
-  // ============================================================
-  // ATAJOS DE TECLADO
-  // ============================================================
-
   useEditorKeyboard({
     enabled: isEditing,
     onHerramientaChange: setHerramienta,
@@ -306,10 +308,6 @@ export function MapaMesasZoom({
       setMesaSeleccionada(null)
     }
   })
-
-  // ============================================================
-  // MINIMAPA Y ZOOM
-  // ============================================================
 
   const handleTransform = (ref: ReactZoomPanPinchRef) => {
     const { scale, positionX, positionY } = ref.state
@@ -353,7 +351,6 @@ export function MapaMesasZoom({
 
   return (
     <div className="relative w-full bg-[#1a1410] rounded-2xl overflow-hidden shadow-2xl">
-      {/* Header */}
       <div className="relative z-30 px-6 py-4 bg-black/40 backdrop-blur-md border-b border-amber-500/20 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg">
@@ -396,7 +393,6 @@ export function MapaMesasZoom({
         </Button>
       </div>
 
-      {/* TOOLBAR DE EDICIÓN (solo en modo edición) */}
       {isEditing && (
         <EditorToolbar
           herramienta={herramienta}
@@ -418,7 +414,6 @@ export function MapaMesasZoom({
         />
       )}
 
-      {/* ÁREA ZOOMABLE */}
       <TransformWrapper
         ref={transformRef}
         initialScale={1}
@@ -433,7 +428,6 @@ export function MapaMesasZoom({
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
-            {/* Controles de zoom */}
             <div className="absolute top-24 right-4 z-20 flex flex-col gap-2">
               <Button
                 variant="outline"
@@ -470,7 +464,7 @@ export function MapaMesasZoom({
             >
               <div
                 ref={mapContainerRef}
-                className={`relative w-full touch-none ${
+                className={`relative w-full touch-none mapa-container ${
                   isEditing && herramienta === 'agregar_mesa' ? 'cursor-crosshair' : ''
                 }`}
                 style={{
@@ -487,6 +481,9 @@ export function MapaMesasZoom({
               >
                 {showGrid && <GridOverlay size={5} />}
 
+                {/* Guías de alineación (overlay) */}
+                <SnappingGuides guides={guides} />
+
                 {elementos.map((el) => (
                   <ElementoMapa key={el.id} elemento={el} />
                 ))}
@@ -500,6 +497,10 @@ export function MapaMesasZoom({
                         isSelected={mesaSeleccionada?.id === mesa.id || mesaSeleccionadaId === mesa.id}
                         onSelect={handleSelectFromEdit}
                         onDragEnd={handleDragEnd}
+                        onSnappingChange={setGuides}
+                        otrasMesas={mesas}
+                        gridSize={5}
+                        snapEnabled={showGrid}
                       />
                     )
                   }
@@ -527,16 +528,14 @@ export function MapaMesasZoom({
         )}
       </TransformWrapper>
 
-      {/* Footer */}
       <div className="relative z-30 px-6 py-2 bg-black/40 backdrop-blur-md border-t border-amber-500/20 flex items-center justify-between text-xs text-white/60">
         <span>{mesas.length} mesas · {elementos.length} elementos</span>
         <span className="flex items-center gap-2">
           <Map className="h-3 w-3" />
-          {isEditing ? 'V seleccionar · M agregar · G grid · Ctrl+Z/Y undo · Ctrl+S guardar' : 'Arrastra para mover · Rueda para zoom'}
+          {isEditing ? 'V seleccionar · M agregar · G grid · Ctrl+Z/Y · Ctrl+S guardar' : 'Arrastra para mover · Rueda para zoom'}
         </span>
       </div>
 
-      {/* Modal de crear mesa al hacer click */}
       <Dialog open={!!nuevaMesaCoords} onOpenChange={(open) => !open && setNuevaMesaCoords(null)}>
         <DialogContent className="max-w-md w-[95vw] sm:w-full">
           <DialogHeader>
@@ -552,10 +551,6 @@ export function MapaMesasZoom({
     </div>
   )
 }
-
-// ============================================================
-// SUBCOMPONENTE: Formulario de nueva mesa
-// ============================================================
 
 function FormularioNuevaMesa({
   onConfirm,
