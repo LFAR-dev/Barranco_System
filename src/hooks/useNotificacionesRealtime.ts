@@ -3,8 +3,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from './use-toast'
+import { useAuth } from './useAuth'
+import { useNotificationSound } from './useNotificationSound'
 
-type TablaNotif = 
+type TablaNotif =
   | 'notificaciones_admin'
   | 'notificaciones_bartender'
   | 'notificaciones_mesero'
@@ -44,45 +46,45 @@ export function useNotificacionesRealtime({
   const [loading, setLoading] = useState(true)
   const [isMounted, setIsMounted] = useState(false)
   const { toast } = useToast()
+  const { user } = useAuth()
+  const { play } = useNotificationSound({ usuarioId: user?.id })
   const supabase = createClient()
   const channelRef = useRef<any>(null)
-  const audioCtxRef = useRef<AudioContext | null>(null)
 
   useEffect(() => {
     setIsMounted(true)
   }, [])
 
   // ============================================================
-  // Sonido de notificación (Web Audio API)
+  // Mapeo de tipo de notificación a sonido
   // ============================================================
-  const reproducirSonido = useCallback(() => {
-    if (!sonido) return
-    try {
-      if (typeof window === 'undefined') return
-      
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+  const reproducirSonido = useCallback(
+    (tipo: string) => {
+      if (!sonido) return
+
+      const mapaSonidos: Record<
+        string,
+        'pedido_nuevo' | 'pedido_entregado' | 'pedido_atendido' | 'pedido_listo_bartender'
+      > = {
+        nuevo_pedido: 'pedido_nuevo',
+        pedido_listo: 'pedido_entregado',
+        pedido_cobrado: 'pedido_atendido',
+        pedido_asignado: 'pedido_nuevo',
+        pedido_actualizado: 'pedido_nuevo',
+        pedido_en_preparacion: 'pedido_listo_bartender',
+        venta_realizada: 'pedido_atendido',
+        pedido_cancelado: 'pedido_nuevo',
+        stock_bajo: 'pedido_listo_bartender',
+        stock_agotado: 'pedido_listo_bartender',
+        pedido_sin_bartender: 'pedido_listo_bartender',
+        cierre_sesion_operativo: 'pedido_atendido'
       }
-      
-      const ctx = audioCtxRef.current
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      
-      osc.frequency.setValueAtTime(800, ctx.currentTime)
-      osc.frequency.setValueAtTime(1000, ctx.currentTime + 0.1)
-      
-      gain.gain.setValueAtTime(0.15, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
-      
-      osc.start(ctx.currentTime)
-      osc.stop(ctx.currentTime + 0.3)
-    } catch (e) {
-      // Audio no soportado o bloqueado
-    }
-  }, [sonido])
+
+      const sonidoTipo = mapaSonidos[tipo] || 'pedido_nuevo'
+      play(sonidoTipo)
+    },
+    [sonido, play]
+  )
 
   // ============================================================
   // Cargar notificaciones iniciales
@@ -140,43 +142,27 @@ export function useNotificacionesRealtime({
         },
         (payload) => {
           const nueva = payload.new as NotificacionRow
-          
-          // Si hay filtro, verificar que coincida
+
           if (filtro && nueva[filtro.campo] !== filtro.valor) {
             return
           }
 
-          // Añadir a la lista
-          setNotificaciones(prev => [nueva, ...prev])
-          setUnreadCount(prev => prev + 1)
+          setNotificaciones((prev) => [nueva, ...prev])
+          setUnreadCount((prev) => prev + 1)
 
-          // Toast automático
           const tipo = nueva.tipo || 'notificacion'
-          const iconos: Record<string, string> = {
-            nuevo_pedido: '📦',
-            pedido_listo: '✅',
-            pedido_cancelado: '❌',
-            pedido_cobrado: '💰',
-            pedido_asignado: '📋',
-            pedido_actualizado: '🔄',
-            pedido_en_preparacion: '👨‍🍳',
-            cierre_sesion_operativo: '🚪',
-            stock_bajo: '⚠️',
-            stock_agotado: '🚨',
-            pedido_sin_bartender: '⚠️',
-            venta_realizada: '💵'
-          }
-          
+
           toast({
-            title: `${iconos[tipo] || '🔔'} ${tituloPorTipo(tipo)}`,
+            title: tituloPorTipo(tipo),
             description: nueva.mensaje,
-            variant: tipo === 'pedido_cancelado' || tipo === 'stock_agotado' 
-              ? 'destructive' 
-              : 'default',
+            variant:
+              tipo === 'pedido_cancelado' || tipo === 'stock_agotado'
+                ? 'destructive'
+                : 'default',
             duration: 6000
           })
 
-          reproducirSonido()
+          reproducirSonido(tipo)
         }
       )
       .on(
@@ -190,19 +176,18 @@ export function useNotificacionesRealtime({
           const actualizada = payload.new as NotificacionRow
           if (filtro && actualizada[filtro.campo] !== filtro.valor) return
 
-          setNotificaciones(prev =>
-            prev.map(n => n.id === actualizada.id ? actualizada : n)
+          setNotificaciones((prev) =>
+            prev.map((n) => (n.id === actualizada.id ? actualizada : n))
           )
-          
-          // Recalcular no leídas
-          setNotificaciones(prev => {
-            setUnreadCount(prev.filter(n => !n.leida).length)
+
+          setNotificaciones((prev) => {
+            setUnreadCount(prev.filter((n) => !n.leida).length)
             return prev
           })
         }
       )
       .subscribe((status) => {
-        console.log(`🔔 ${tabla}: ${status}`)
+        console.log(`${tabla}: ${status}`)
       })
 
     channelRef.current = channel
@@ -223,31 +208,28 @@ export function useNotificacionesRealtime({
   // ============================================================
   // Marcar como leída
   // ============================================================
-  const marcarLeida = useCallback(async (id: string) => {
-    try {
-      await supabase
-        .from(tabla)
-        .update({ leida: true })
-        .eq('id', id)
+  const marcarLeida = useCallback(
+    async (id: string) => {
+      try {
+        await supabase.from(tabla).update({ leida: true }).eq('id', id)
 
-      setNotificaciones(prev =>
-        prev.map(n => n.id === id ? { ...n, leida: true } : n)
-      )
-      setUnreadCount(prev => Math.max(0, prev - 1))
-    } catch (error) {
-      console.error('Error al marcar leída:', error)
-    }
-  }, [supabase, tabla])
+        setNotificaciones((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, leida: true } : n))
+        )
+        setUnreadCount((prev) => Math.max(0, prev - 1))
+      } catch (error) {
+        console.error('Error al marcar leída:', error)
+      }
+    },
+    [supabase, tabla]
+  )
 
   // ============================================================
   // Marcar todas como leídas
   // ============================================================
   const marcarTodasLeidas = useCallback(async () => {
     try {
-      let query = supabase
-        .from(tabla)
-        .update({ leida: true })
-        .eq('leida', false)
+      let query = supabase.from(tabla).update({ leida: true }).eq('leida', false)
 
       if (filtro) {
         query = query.eq(filtro.campo, filtro.valor)
@@ -255,7 +237,7 @@ export function useNotificacionesRealtime({
 
       await query
 
-      setNotificaciones(prev => prev.map(n => ({ ...n, leida: true })))
+      setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })))
       setUnreadCount(0)
     } catch (error) {
       console.error('Error al marcar todas:', error)

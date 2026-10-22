@@ -21,6 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { NotificationSoundToggle } from '@/components/shared/NotificationSoundToggle'
 
 type Rol = 'admin' | 'bartender' | 'mesero' | 'caja'
 
@@ -321,7 +322,7 @@ export function UserMenu({
             {uploadSuccess && <CheckCircle className="ml-auto h-4 w-4 text-green-500" />}
           </DropdownMenuItem>
 
-          {onEditProfile && (
+                     {onEditProfile && (
             <DropdownMenuItem onClick={handleEditProfileClick} className="cursor-pointer">
               <User className="mr-2 h-4 w-4" />
               <span>Mi Perfil</span>
@@ -330,6 +331,29 @@ export function UserMenu({
 
           <DropdownMenuSeparator />
 
+          {user?.id && (
+            <>
+              <div className="px-2 py-1.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-600">Sonido</span>
+                  <span className="text-[10px] text-gray-400">notificaciones</span>
+                </div>
+                <NotificationSoundToggle usuarioId={user.id} />
+              </div>
+              <DropdownMenuSeparator />
+            </>
+          )}
+
+          <DropdownMenuSeparator />
+{user?.id && (
+  <>
+    <DropdownMenuSeparator />
+    <div className="px-2 py-1.5 flex items-center justify-between">
+      <span className="text-xs text-gray-600">Sonido de notificaciones</span>
+      <NotificationSoundToggle usuarioId={user.id} />
+    </div>
+  </>
+)}
           {esAdmin ? (
             <DropdownMenuItem
               onClick={handleLogoutClick}

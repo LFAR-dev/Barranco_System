@@ -135,17 +135,28 @@ export const mesaService = {
    * Actualiza una mesa (admin)
    */
   async actualizar(id: string, input: ActualizarMesaInput): Promise<Mesa> {
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from('mesas')
-      .update({ ...input, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .maybeSingle()
+  const supabase = createClient()
+  
+  // Obtener usuario actual para auditoría
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  const { data, error } = await supabase
+    .from('mesas')
+    .update({ 
+      ...input, 
+      updated_at: new Date().toISOString(),
+      ...(user && { 
+        ultima_edicion_por: user.id,
+        ultima_edicion_en: new Date().toISOString()
+      })
+    })
+    .eq('id', id)
+    .select()
+    .maybeSingle()
 
-    if (error) throw new Error('No se pudo actualizar la mesa')
-    return data as Mesa
-  },
+  if (error) throw new Error('No se pudo actualizar la mesa')
+  return data as Mesa
+},
 
   /**
    * Actualiza solo la posición de la mesa (para el editor drag-and-drop)
