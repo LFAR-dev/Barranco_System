@@ -1,8 +1,16 @@
 import { createClient } from '@/lib/supabase/client'
+import { jornadaService } from './jornadaService'
 
 export const wasteService = {
   async create(data: any): Promise<boolean> {
     const supabase = createClient()
+
+    // Obtener jornada activa si no viene en data
+    let jornadaId = data.jornada_id
+    if (!jornadaId) {
+      jornadaId = await jornadaService.getJornadaActualId()
+    }
+
     const { error } = await supabase
       .from('mermas')
       .insert([{
@@ -12,15 +20,16 @@ export const wasteService = {
         cantidad: data.cantidad,
         motivo: data.motivo,
         descripcion: data.descripcion,
-        tipo: data.tipo || 'no_esperada'
+        tipo: data.tipo || 'no_esperada',
+        jornada_id: jornadaId || null
       }])
     if (error) throw error
     return true
   },
 
-  async getByBartender(bartenderId: string): Promise<any[]> {
+  async getByBartender(bartenderId: string, jornadaId?: string): Promise<any[]> {
     const supabase = createClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from('mermas')
       .select(`
         *,
@@ -28,7 +37,11 @@ export const wasteService = {
       `)
       .eq('bartender_id', bartenderId)
       .order('fecha', { ascending: false })
+
+    if (jornadaId) query = query.eq('jornada_id', jornadaId)
+
+    const { data, error } = await query
     if (error) throw error
-    return data
+    return data || []
   }
 }

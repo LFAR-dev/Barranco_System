@@ -2,56 +2,69 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Receipt, Clock, UserCircle, DollarSign, AlertCircle,
+  Receipt, Clock, UserCircle, AlertCircle,
   Loader2, RefreshCw, ChevronRight
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
 import { cuentaService, CuentaAbierta } from '@/lib/services/cuentaService'
 import { useToast } from '@/hooks/use-toast'
 
 interface PanelCuentasCajaProps {
   onCuentaClick: (cuenta: CuentaAbierta) => void
+  jornadaId?: string | null
 }
 
-export function PanelCuentasCaja({ onCuentaClick }: PanelCuentasCajaProps) {
+export function PanelCuentasCaja({ onCuentaClick, jornadaId }: PanelCuentasCajaProps) {
   const { toast } = useToast()
   const [cuentas, setCuentas] = useState<CuentaAbierta[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
   const cargarCuentas = useCallback(async () => {
+    if (!jornadaId) {
+      setCuentas([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
-      const data = await cuentaService.getTodasLasCuentasActivas()
+      const data = await cuentaService.getTodasLasCuentasActivas(jornadaId)
       setCuentas(data)
     } catch (error) {
       console.error('Error al cargar cuentas:', error)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [jornadaId])
 
   useEffect(() => {
     cargarCuentas()
 
+    if (!jornadaId) return
+
+    const channelName = `cuentas_caja_${jornadaId.slice(0, 8)}_${Date.now()}`
     const channel = supabase
-      .channel('cuentas_caja_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas_abiertas' }, () => {
-        cargarCuentas()
-      })
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cuentas_abiertas' },
+        () => {
+          cargarCuentas()
+        }
+      )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [cargarCuentas, supabase])
+  }, [cargarCuentas, supabase, jornadaId])
 
-  // Separar cuentas solicitadas (prioridad) y cuentas abiertas
-  const solicitadas = cuentas.filter(c => c.estado === 'cuenta_solicitada')
-  const abiertas = cuentas.filter(c => c.estado === 'abierta' || c.estado === 'cobrando')
+  const solicitadas = cuentas.filter((c) => c.estado === 'cuenta_solicitada')
+  const abiertas = cuentas.filter(
+    (c) => c.estado === 'abierta' || c.estado === 'cobrando'
+  )
 
   const tiempoAbierta = (fecha: string) => {
     const minutos = Math.floor((Date.now() - new Date(fecha).getTime()) / 60000)
@@ -75,18 +88,21 @@ export function PanelCuentasCaja({ onCuentaClick }: PanelCuentasCajaProps) {
   return (
     <Card>
       <CardContent className="p-3 space-y-3">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Receipt className="h-4 w-4 text-emerald-600" />
             <h3 className="text-sm font-bold text-gray-900">Cuentas de Mesa</h3>
           </div>
-          <Button variant="ghost" size="sm" onClick={cargarCuentas} className="h-7">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={cargarCuentas}
+            className="h-7"
+          >
             <RefreshCw className="h-3 w-3" />
           </Button>
         </div>
 
-        {/* Cuentas solicitadas (prioridad) */}
         {solicitadas.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-1.5">
@@ -107,7 +123,9 @@ export function PanelCuentasCaja({ onCuentaClick }: PanelCuentasCajaProps) {
                       {cuenta.mesa?.numero || '?'}
                     </div>
                     <div>
-                      <p className="font-bold text-gray-900 text-sm">Mesa {cuenta.mesa?.numero}</p>
+                      <p className="font-bold text-gray-900 text-sm">
+                        Mesa {cuenta.mesa?.numero}
+                      </p>
                       <p className="text-[10px] text-gray-600 flex items-center gap-1">
                         <UserCircle className="h-2.5 w-2.5" />
                         {cuenta.mesero?.nombre} {cuenta.mesero?.apellido}
@@ -130,7 +148,6 @@ export function PanelCuentasCaja({ onCuentaClick }: PanelCuentasCajaProps) {
           </div>
         )}
 
-        {/* Cuentas abiertas (sin solicitud aún) */}
         {abiertas.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -148,9 +165,12 @@ export function PanelCuentasCaja({ onCuentaClick }: PanelCuentasCajaProps) {
                       {cuenta.mesa?.numero || '?'}
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900 text-xs">Mesa {cuenta.mesa?.numero}</p>
+                      <p className="font-medium text-gray-900 text-xs">
+                        Mesa {cuenta.mesa?.numero}
+                      </p>
                       <p className="text-[10px] text-gray-500">
-                        {cuenta.mesero?.nombre?.charAt(0)}. {cuenta.mesero?.apellido} · {tiempoAbierta(cuenta.abierta_en)}
+                        {cuenta.mesero?.nombre?.charAt(0)}. {cuenta.mesero?.apellido} ·{' '}
+                        {tiempoAbierta(cuenta.abierta_en)}
                       </p>
                     </div>
                   </div>
@@ -166,12 +186,13 @@ export function PanelCuentasCaja({ onCuentaClick }: PanelCuentasCajaProps) {
           </div>
         )}
 
-        {/* Sin cuentas */}
         {cuentas.length === 0 && (
           <div className="text-center py-4">
             <Receipt className="h-8 w-8 text-gray-300 mx-auto mb-2" />
             <p className="text-xs text-gray-500">Sin cuentas activas</p>
-            <p className="text-[10px] text-gray-400">Las mesas ocupadas aparecerán aquí</p>
+            <p className="text-[10px] text-gray-400">
+              Las mesas ocupadas apareceran aqui
+            </p>
           </div>
         )}
       </CardContent>

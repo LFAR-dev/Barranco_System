@@ -38,9 +38,8 @@ export default function MeseroDashboard() {
   const { user, logout } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
-  const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
-  const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
-  
+const { jornadaActiva, jornadaId, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
+const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()  
   // GPS
   const { 
     estado: gpsEstado, 
@@ -58,13 +57,13 @@ export default function MeseroDashboard() {
   const [showGPSModal, setShowGPSModal] = useState(false)
   const [hasAskedGPS, setHasAskedGPS] = useState(false)
 
-  useEffect(() => {
-    if (user) {
+    useEffect(() => {
+    if (user && jornadaId) {
       fetchOrders()
       const interval = setInterval(fetchOrders, 30000)
       return () => clearInterval(interval)
     }
-  }, [user])
+  }, [user, jornadaId])
 
   // Verificar si ya pidió permiso GPS antes
   useEffect(() => {
@@ -81,10 +80,15 @@ export default function MeseroDashboard() {
     }
   }, [user?.id])
 
-  const fetchOrders = async () => {
+   const fetchOrders = async () => {
+    if (!jornadaId) {
+      setOrders([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
-      const data = await orderService.getOrdersByEstado()
+      const data = await orderService.getOrdersByJornada(jornadaId)
       setOrders(data)
     } catch (error) {
       console.error('Error fetching orders:', error)

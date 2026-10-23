@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast'
 import { createClient } from '@/lib/supabase/client'
 import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
 import { orderService } from '@/lib/services/orderService'
+import { wasteService } from '@/lib/services/wasteService'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { useTurnoActivo } from '@/hooks/useTurnoActivo'
 import { JornadaCerradaOverlay } from '@/components/shared/JornadaCerradaOverlay'
@@ -47,8 +48,10 @@ export default function BartenderDashboard() {
   const router = useRouter()
   const { toast } = useToast()
   const supabase = createClient()
-  const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
+
+  const { jornadaActiva, jornadaId, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
+
   const [pedidos, setPedidos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [isMermaOpen, setIsMermaOpen] = useState(false)
@@ -57,23 +60,37 @@ export default function BartenderDashboard() {
   const [stats, setStats] = useState({ pendientes: 0, preparando: 0, listos: 0, total: 0 })
 
   useEffect(() => {
-    if (user) {
-      fetchPedidos()
-      const subscription = supabase
-        .channel('pedidos_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
-          fetchPedidos()
-        })
-        .subscribe()
-
-      return () => { subscription.unsubscribe() }
+    if (!user || !jornadaId) {
+      setPedidos([])
+      setLoading(false)
+      return
     }
-  }, [user])
+
+    fetchPedidos()
+
+    const subscription = supabase
+      .channel('pedidos_changes_bartender')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
+        fetchPedidos()
+      })
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [user, jornadaId])
 
   const fetchPedidos = async () => {
+    if (!jornadaId) {
+      setPedidos([])
+      setStats({ pendientes: 0, preparando: 0, listos: 0, total: 0 })
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
-      const data = await orderService.getOrdersByEstado()
+      const data = await orderService.getOrdersByJornada(jornadaId)
       setPedidos(data || [])
       setStats({
         pendientes: data.filter((o: any) => o.estado === 'pendiente').length,
@@ -83,7 +100,11 @@ export default function BartenderDashboard() {
       })
     } catch (error) {
       console.error('Error fetching pedidos:', error)
-      toast({ title: 'Error', description: 'No se pudieron cargar los pedidos', variant: 'destructive' })
+      toast({
+        title: 'Error',
+        description: 'No se pudieron cargar los pedidos',
+        variant: 'destructive'
+      })
     } finally {
       setLoading(false)
     }
@@ -91,14 +112,21 @@ export default function BartenderDashboard() {
 
   const handleLogout = async () => {
     await logout()
-    toast({ title: '👋 Sesión cerrada', description: 'Has cerrado sesión correctamente', variant: 'default' })
+    toast({
+      title: 'Sesion cerrada',
+      description: 'Has cerrado sesion correctamente',
+      variant: 'default'
+    })
     router.push('/')
   }
 
-  const actualizarEstado = async (pedidoId: string, nuevoEstado: "pendiente" | "preparando" | "listo" | "servido" | "cancelado") => {
+  const actualizarEstado = async (
+    pedidoId: string,
+    nuevoEstado: 'pendiente' | 'preparando' | 'listo' | 'servido' | 'cancelado'
+  ) => {
     if (!turnoActivo) {
       toast({
-        title: '⚠️ No estás activo',
+        title: 'No estas activo',
         description: 'El administrador debe activarte en el turno para poder operar',
         variant: 'destructive'
       })
@@ -107,28 +135,37 @@ export default function BartenderDashboard() {
 
     try {
       await orderService.updateOrder(pedidoId, { estado: nuevoEstado })
-      const pedido = pedidos.find(p => p.id === pedidoId)
+      const pedido = pedidos.find((p) => p.id === pedidoId)
       if (pedido) {
-        await supabase
-          .from('notificaciones_mesero')
-          .insert([{
+        await supabase.from('notificaciones_mesero').insert([
+          {
             mesero_id: pedido.mesero_id,
             pedido_id: pedidoId,
             tipo: 'pedido_actualizado',
-            mensaje: `Pedido de mesa ${pedido.mesa} ahora está: ${nuevoEstado}`
-          }])
+            mensaje: `Pedido de mesa ${pedido.mesa} ahora esta: ${nuevoEstado}`,
+            jornada_id: jornadaId
+          }
+        ])
       }
-      toast({ title: '✅ Estado actualizado', description: `Pedido ahora está: ${nuevoEstado}`, variant: 'success' })
+      toast({
+        title: 'Estado actualizado',
+        description: `Pedido ahora esta: ${nuevoEstado}`,
+        variant: 'success'
+      })
       fetchPedidos()
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo actualizar el estado', variant: 'destructive' })
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el estado',
+        variant: 'destructive'
+      })
     }
   }
 
   const handleMerma = async () => {
     if (!turnoActivo) {
       toast({
-        title: '⚠️ No estás activo',
+        title: 'No estas activo',
         description: 'No puedes registrar mermas sin estar activo en el turno',
         variant: 'destructive'
       })
@@ -136,21 +173,26 @@ export default function BartenderDashboard() {
     }
 
     try {
-      const { error } = await supabase
-        .from('mermas')
-        .insert([{
-          producto_id: mermaData.producto,
-          bartender_id: user?.id,
-          cantidad: mermaData.cantidad,
-          motivo: mermaData.motivo,
-          fecha: new Date().toISOString()
-        }])
-      if (error) throw error
-      toast({ title: '✅ Merma registrada', description: 'La merma ha sido registrada', variant: 'success' })
+      await wasteService.create({
+        producto_id: mermaData.producto,
+        bartender_id: user?.id,
+        cantidad: mermaData.cantidad,
+        motivo: mermaData.motivo,
+        jornada_id: jornadaId
+      })
+      toast({
+        title: 'Merma registrada',
+        description: 'La merma ha sido registrada',
+        variant: 'success'
+      })
       setIsMermaOpen(false)
       setMermaData({ producto: '', cantidad: 0, motivo: '' })
     } catch (error) {
-      toast({ title: 'Error', description: 'No se pudo registrar la merma', variant: 'destructive' })
+      toast({
+        title: 'Error',
+        description: 'No se pudo registrar la merma',
+        variant: 'destructive'
+      })
     }
   }
 
@@ -174,9 +216,10 @@ export default function BartenderDashboard() {
     }
   }
 
-  const nombreCompleto = `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
+  const nombreCompleto =
+    `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
 
-  if (loading && pedidos.length === 0) {
+  if (loading && pedidos.length === 0 && jornadaId) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="flex flex-col items-center gap-4">
@@ -202,7 +245,9 @@ export default function BartenderDashboard() {
       <AppShell
         rol="bartender"
         sections={SECTIONS}
-        sidebarHeaderSlot={user?.id ? <ToggleDisponibilidad rol="bartender" usuarioId={user.id} /> : null}
+        sidebarHeaderSlot={
+          user?.id ? <ToggleDisponibilidad rol="bartender" usuarioId={user.id} /> : null
+        }
         headerRight={
           <>
             {user?.id && (
@@ -210,10 +255,10 @@ export default function BartenderDashboard() {
                 <ToggleDisponibilidad rol="bartender" usuarioId={user.id} />
               </div>
             )}
-             <NotificationBellUniversal rol="bartender" usuarioId={user?.id || ''} />
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <NotificationBellUniversal rol="bartender" usuarioId={user?.id || ''} />
+            <Button
+              variant="outline"
+              size="sm"
               className="text-red-600 border-red-200 hover:bg-red-50 whitespace-nowrap hidden sm:flex"
               onClick={() => setIsMermaOpen(true)}
               disabled={!turnoActivo}
@@ -233,11 +278,16 @@ export default function BartenderDashboard() {
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                ¡Hola, {user?.nombre || user?.email?.split('@')[0] || 'Bartender'}!
+                Hola, {user?.nombre || user?.email?.split('@')[0] || 'Bartender'}
               </h1>
               <p className="text-sm text-gray-500">Gestiona los pedidos de la barra</p>
             </div>
-            <Button variant="outline" size="sm" onClick={fetchPedidos} className="text-gray-600 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchPedidos}
+              className="text-gray-600 shrink-0"
+            >
               <Loader2 className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Actualizar</span>
             </Button>
@@ -262,7 +312,9 @@ export default function BartenderDashboard() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs sm:text-sm text-gray-500 truncate">Pendientes</p>
-                    <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pendientes}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-yellow-600">
+                      {stats.pendientes}
+                    </p>
                   </div>
                   <div className="p-2 sm:p-3 bg-yellow-100 rounded-full shrink-0">
                     <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
@@ -275,7 +327,9 @@ export default function BartenderDashboard() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs sm:text-sm text-gray-500 truncate">Preparando</p>
-                    <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.preparando}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-blue-600">
+                      {stats.preparando}
+                    </p>
                   </div>
                   <div className="p-2 sm:p-3 bg-blue-100 rounded-full shrink-0">
                     <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
@@ -301,8 +355,10 @@ export default function BartenderDashboard() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center justify-between text-base sm:text-lg">
-                <span>📋 Pedidos en la barra</span>
-                <Badge variant="secondary" className="text-xs">{pedidos.length} total</Badge>
+                <span>Pedidos en la barra</span>
+                <Badge variant="secondary" className="text-xs">
+                  {pedidos.length} total
+                </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -310,7 +366,9 @@ export default function BartenderDashboard() {
                 <div className="text-center py-8 sm:py-12">
                   <Coffee className="h-10 w-10 sm:h-12 sm:w-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500 text-sm">No hay pedidos en la barra</p>
-                  <p className="text-xs text-gray-400">Aparecerán cuando los meseros los envíen</p>
+                  <p className="text-xs text-gray-400">
+                    Apareceran cuando los meseros los envien
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-3 sm:space-y-4">
@@ -320,7 +378,10 @@ export default function BartenderDashboard() {
                       : 'Sin asignar'
 
                     return (
-                      <div key={pedido.id} className="border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow">
+                      <div
+                        key={pedido.id}
+                        className="border rounded-lg p-3 sm:p-4 hover:shadow-md transition-shadow"
+                      >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div className="flex-1 min-w-0 w-full sm:w-auto">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -336,21 +397,23 @@ export default function BartenderDashboard() {
                               </span>
                             </div>
 
-                            {/* Info del mesero asignado y ubicación */}
                             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
                               <span className="inline-flex items-center gap-1 text-orange-700 bg-orange-50 px-2 py-1 rounded-md border border-orange-200">
                                 <UserRound className="h-3 w-3" />
                                 <span className="font-medium">{meseroNombre}</span>
                               </span>
                             </div>
-                            
+
                             <div className="mt-2 space-y-1.5">
                               {pedido.items?.map((item: any, idx: number) => (
-                                <div key={idx} className="flex justify-between items-center text-xs sm:text-sm text-gray-600 gap-2 bg-gray-50 rounded px-2 py-1">
+                                <div
+                                  key={idx}
+                                  className="flex justify-between items-center text-xs sm:text-sm text-gray-600 gap-2 bg-gray-50 rounded px-2 py-1"
+                                >
                                   <div className="flex items-center gap-2 min-w-0 flex-1">
                                     <span className="truncate">{item.nombre}</span>
-                                    <BotonReceta 
-                                      recetaId={item.receta_id} 
+                                    <BotonReceta
+                                      recetaId={item.receta_id}
                                       recetaNombre={item.nombre}
                                       variant="icon"
                                       size="sm"
@@ -368,8 +431,8 @@ export default function BartenderDashboard() {
                             </span>
                             <div className="flex gap-1.5 flex-wrap justify-end">
                               {pedido.estado === 'pendiente' && (
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   disabled={!turnoActivo}
                                   className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
                                   onClick={() => actualizarEstado(pedido.id, 'preparando')}
@@ -379,8 +442,8 @@ export default function BartenderDashboard() {
                                 </Button>
                               )}
                               {pedido.estado === 'preparando' && (
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   disabled={!turnoActivo}
                                   className="bg-green-600 hover:bg-green-700 text-white text-xs"
                                   onClick={() => actualizarEstado(pedido.id, 'listo')}
@@ -390,8 +453,8 @@ export default function BartenderDashboard() {
                                 </Button>
                               )}
                               {pedido.estado === 'listo' && (
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   variant="outline"
                                   disabled={!turnoActivo}
                                   className="text-gray-600 text-xs"
@@ -400,8 +463,8 @@ export default function BartenderDashboard() {
                                   Servido
                                 </Button>
                               )}
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
                                 variant="outline"
                                 disabled={!turnoActivo}
                                 className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
@@ -432,7 +495,9 @@ export default function BartenderDashboard() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="producto" className="text-sm">Producto</Label>
+              <Label htmlFor="producto" className="text-sm">
+                Producto
+              </Label>
               <Input
                 id="producto"
                 placeholder="Nombre del producto"
@@ -441,17 +506,26 @@ export default function BartenderDashboard() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="cantidad" className="text-sm">Cantidad perdida</Label>
+              <Label htmlFor="cantidad" className="text-sm">
+                Cantidad perdida
+              </Label>
               <Input
                 id="cantidad"
                 type="number"
                 placeholder="Cantidad"
                 value={mermaData.cantidad || ''}
-                onChange={(e) => setMermaData({ ...mermaData, cantidad: parseFloat(e.target.value) || 0 })}
+                onChange={(e) =>
+                  setMermaData({
+                    ...mermaData,
+                    cantidad: parseFloat(e.target.value) || 0
+                  })
+                }
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="motivo" className="text-sm">Motivo</Label>
+              <Label htmlFor="motivo" className="text-sm">
+                Motivo
+              </Label>
               <Input
                 id="motivo"
                 placeholder="Ej: Derrame, producto caducado, etc."
@@ -459,7 +533,11 @@ export default function BartenderDashboard() {
                 onChange={(e) => setMermaData({ ...mermaData, motivo: e.target.value })}
               />
             </div>
-            <Button className="w-full bg-red-600 hover:bg-red-700" onClick={handleMerma} disabled={!turnoActivo}>
+            <Button
+              className="w-full bg-red-600 hover:bg-red-700"
+              onClick={handleMerma}
+              disabled={!turnoActivo}
+            >
               Registrar Merma
             </Button>
           </div>

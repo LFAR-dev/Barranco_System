@@ -86,9 +86,9 @@ export const cuentaService = {
   /**
    * Obtiene la cuenta activa de una mesa
    */
-  async getCuentaActiva(mesaId: string): Promise<CuentaAbierta | null> {
+    async getCuentaActiva(mesaId: string, jornadaId?: string): Promise<CuentaAbierta | null> {
     const supabase = createClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from('cuentas_abiertas')
       .select(`
         *,
@@ -97,7 +97,10 @@ export const cuentaService = {
       `)
       .eq('mesa_id', mesaId)
       .neq('estado', 'cerrada')
-      .maybeSingle()
+
+    if (jornadaId) query = query.eq('jornada_id', jornadaId)
+
+    const { data, error } = await query.maybeSingle()
 
     if (error) return null
     return data as CuentaAbierta
@@ -144,9 +147,9 @@ export const cuentaService = {
   /**
    * Obtiene todas las cuentas activas de un mesero
    */
-  async getCuentasDelMesero(meseroId: string): Promise<CuentaAbierta[]> {
+    async getCuentasDelMesero(meseroId: string, jornadaId?: string): Promise<CuentaAbierta[]> {
     const supabase = createClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from('cuentas_abiertas')
       .select(`
         *,
@@ -157,6 +160,10 @@ export const cuentaService = {
       .neq('estado', 'cerrada')
       .order('abierta_en', { ascending: false })
 
+    if (jornadaId) query = query.eq('jornada_id', jornadaId)
+
+    const { data, error } = await query
+
     if (error) return []
     return (data || []) as CuentaAbierta[]
   },
@@ -164,9 +171,9 @@ export const cuentaService = {
   /**
    * Obtiene TODAS las cuentas activas (para caja)
    */
-  async getTodasLasCuentasActivas(): Promise<CuentaAbierta[]> {
+    async getTodasLasCuentasActivas(jornadaId?: string): Promise<CuentaAbierta[]> {
     const supabase = createClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from('cuentas_abiertas')
       .select(`
         *,
@@ -176,10 +183,13 @@ export const cuentaService = {
       .neq('estado', 'cerrada')
       .order('abierta_en', { ascending: true })
 
+    if (jornadaId) query = query.eq('jornada_id', jornadaId)
+
+    const { data, error } = await query
+
     if (error) return []
     return (data || []) as CuentaAbierta[]
   },
-
   /**
    * Agrega un pedido a la cuenta (después de crear el pedido)
    */

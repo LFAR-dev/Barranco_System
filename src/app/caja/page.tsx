@@ -33,7 +33,7 @@ const SECTIONS: SidebarSection[] = [
     title: 'Mi turno',
     items: [
       { label: 'Cobros y pedidos', href: '/caja', icon: <ShoppingCart className="h-4 w-4" /> },
-      { label: 'Nuevo pedido (POS)', href: '/caja/pos', icon: <Plus className="h-4 w-4" /> },
+      { label: 'Nuevo pedido (POS)', href: '/caja/pos', icon: <Plus className="h-4 w-4" /> }
     ]
   }
 ]
@@ -42,7 +42,7 @@ export default function CajaDashboard() {
   const { user, loading: authLoading, logout } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
-  const { jornadaActiva, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
+  const { jornadaActiva, jornadaId, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
   const [pedidos, setPedidos] = useState<Order[]>([])
   const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
@@ -51,7 +51,6 @@ export default function CajaDashboard() {
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [sesionActiva, setSesionActiva] = useState<any>(null)
 
-  // Cuentas abiertas
   const [cuentaSeleccionada, setCuentaSeleccionada] = useState<CuentaAbierta | null>(null)
   const [isCobrarOpen, setIsCobrarOpen] = useState(false)
 
@@ -63,30 +62,44 @@ export default function CajaDashboard() {
   })
 
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        router.push('/caja-login')
-        return
-      }
-      if (user.rol !== 'caja') {
-        router.push('/')
-        return
-      }
-      fetchPedidos()
+    if (authLoading) return
+    if (!user) {
+      router.push('/caja-login')
+      return
     }
-  }, [user, authLoading, router])
+    if (user.rol !== 'caja') {
+      router.push('/')
+      return
+    }
+    if (!jornadaId) {
+      setPedidos([])
+      setStats({ total: 0, pendientes: 0, cobrados: 0, totalIngresos: 0 })
+      setLoading(false)
+      return
+    }
+    fetchPedidos()
+  }, [user, authLoading, router, jornadaId])
 
   const fetchPedidos = async () => {
+    if (!jornadaId) {
+      setPedidos([])
+      setStats({ total: 0, pendientes: 0, cobrados: 0, totalIngresos: 0 })
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
-      const data = await orderService.getOrdersByEstado()
+      const data = await orderService.getOrdersByJornada(jornadaId)
       setPedidos(data || [])
 
-      const pendientes = data.filter((o: any) =>
-        o.estado === 'pendiente' || o.estado === 'listo' || o.estado === 'preparando'
+      const pendientes = data.filter(
+        (o: any) =>
+          o.estado === 'pendiente' || o.estado === 'listo' || o.estado === 'preparando'
       ).length
       const cobrados = data.filter((o: any) => o.estado === 'servido').length
-      const totalIngresos = data.filter((o: any) => o.estado === 'servido')
+      const totalIngresos = data
+        .filter((o: any) => o.estado === 'servido')
         .reduce((sum, o) => sum + (o.total || 0), 0)
 
       setStats({
@@ -111,8 +124,8 @@ export default function CajaDashboard() {
     try {
       await logout()
       toast({
-        title: 'Sesión cerrada',
-        description: 'Cerraste sesión correctamente',
+        title: 'Sesion cerrada',
+        description: 'Cerraste sesion correctamente',
         variant: 'default'
       })
       router.push('/')
@@ -124,7 +137,7 @@ export default function CajaDashboard() {
   const handleCobrarPedido = async (pedidoId: string, mesa?: string) => {
     if (!turnoActivo) {
       toast({
-        title: 'No estás activo',
+        title: 'No estas activo',
         description: 'El administrador debe activarte en el turno para cobrar',
         variant: 'destructive'
       })
@@ -135,7 +148,7 @@ export default function CajaDashboard() {
       await orderService.markServed(pedidoId)
       toast({
         title: 'Pedido cobrado',
-        description: `El pedido de ${mesa || 'Caja'} se marcó como cobrado`,
+        description: `El pedido de ${mesa || 'Caja'} se marco como cobrado`,
         variant: 'success'
       })
       fetchPedidos()
@@ -151,7 +164,7 @@ export default function CajaDashboard() {
   const handleOpenCancelModal = (pedido: Order) => {
     if (!turnoActivo) {
       toast({
-        title: 'No estás activo',
+        title: 'No estas activo',
         description: 'No puedes cancelar pedidos sin estar activo en el turno',
         variant: 'destructive'
       })
@@ -178,7 +191,7 @@ export default function CajaDashboard() {
       await orderService.cancelOrder(pedidoToCancel.id, motivo, user.id)
       toast({
         title: 'Pedido cancelado',
-        description: `Se canceló el pedido y se notificó al administrador`,
+        description: `Se cancelo el pedido y se notifico al administrador`,
         variant: 'success',
         duration: 6000
       })
@@ -191,7 +204,7 @@ export default function CajaDashboard() {
   const handleOpenCobrarCuenta = (cuenta: CuentaAbierta) => {
     if (!turnoActivo) {
       toast({
-        title: 'No estás activo',
+        title: 'No estas activo',
         description: 'El administrador debe activarte en el turno para cobrar',
         variant: 'destructive'
       })
@@ -212,9 +225,10 @@ export default function CajaDashboard() {
     }
   }
 
-  const nombreCompleto = `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
+  const nombreCompleto =
+    `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
 
-  if (authLoading || (loading && pedidos.length === 0)) {
+  if (authLoading || (loading && pedidos.length === 0 && !!jornadaId)) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="flex flex-col items-center gap-4">
@@ -227,8 +241,8 @@ export default function CajaDashboard() {
 
   if (!user) return null
 
-  const pedidosActivos = pedidos.filter(o =>
-    o.estado === 'pendiente' || o.estado === 'preparando' || o.estado === 'listo'
+  const pedidosActivos = pedidos.filter(
+    (o) => o.estado === 'pendiente' || o.estado === 'preparando' || o.estado === 'listo'
   )
 
   return (
@@ -262,7 +276,7 @@ export default function CajaDashboard() {
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                ¡Hola, {user?.nombre || user?.email?.split('@')[0] || 'Cajero'}!
+                Hola, {user?.nombre || user?.email?.split('@')[0] || 'Cajero'}
               </h1>
               <p className="text-sm text-gray-500">Gestiona cobros y pedidos desde caja</p>
             </div>
@@ -275,7 +289,10 @@ export default function CajaDashboard() {
                 </Button>
               </Link>
             ) : (
-              <Button disabled className="bg-gray-300 text-gray-500 shrink-0 cursor-not-allowed">
+              <Button
+                disabled
+                className="bg-gray-300 text-gray-500 shrink-0 cursor-not-allowed"
+              >
                 <Plus className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Nuevo Pedido</span>
                 <span className="sm:hidden">Nuevo</span>
@@ -302,7 +319,9 @@ export default function CajaDashboard() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs sm:text-sm text-gray-500 truncate">Activos</p>
-                    <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pendientes}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-yellow-600">
+                      {stats.pendientes}
+                    </p>
                   </div>
                   <div className="p-2 sm:p-3 bg-yellow-100 rounded-full shrink-0">
                     <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
@@ -315,7 +334,9 @@ export default function CajaDashboard() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs sm:text-sm text-gray-500 truncate">Cobrados</p>
-                    <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.cobrados}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-green-600">
+                      {stats.cobrados}
+                    </p>
                   </div>
                   <div className="p-2 sm:p-3 bg-green-100 rounded-full shrink-0">
                     <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
@@ -342,15 +363,18 @@ export default function CajaDashboard() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             <div className="lg:col-span-2 space-y-4">
-              {/* CUENTAS DE MESA (ARRIBA) */}
-              <PanelCuentasCaja onCuentaClick={handleOpenCobrarCuenta} />
+              <PanelCuentasCaja
+                onCuentaClick={handleOpenCobrarCuenta}
+                jornadaId={jornadaId}
+              />
 
-              {/* PEDIDOS ACTIVOS */}
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center justify-between text-base sm:text-lg">
                     <span>Pedidos Activos</span>
-                    <Badge variant="secondary" className="text-xs">{pedidosActivos.length}</Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {pedidosActivos.length}
+                    </Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -381,13 +405,18 @@ export default function CajaDashboard() {
                                 <span className="font-bold text-base sm:text-lg">
                                   {pedido.mesa || 'Caja'}
                                 </span>
-                                <Badge className={`${getStatusColor(pedido.estado)} text-xs`}>
+                                <Badge
+                                  className={`${getStatusColor(pedido.estado)} text-xs`}
+                                >
                                   {pedido.estado.toUpperCase()}
                                 </Badge>
-                                <span className="text-xs text-gray-400">#{pedido.id.slice(0, 6)}</span>
+                                <span className="text-xs text-gray-400">
+                                  #{pedido.id.slice(0, 6)}
+                                </span>
                               </div>
                               <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                                {pedido.items?.length || 0} {pedido.items?.length === 1 ? 'producto' : 'productos'} •{' '}
+                                {pedido.items?.length || 0}{' '}
+                                {pedido.items?.length === 1 ? 'producto' : 'productos'} •{' '}
                                 {new Date(pedido.created_at).toLocaleTimeString()}
                               </p>
                             </div>
@@ -398,8 +427,11 @@ export default function CajaDashboard() {
 
                           <div className="flex flex-wrap gap-1 mb-3">
                             {pedido.items?.map((item: any, idx: number) => (
-                              <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded-md">
-                                {item.nombre} ×{item.cantidad}
+                              <span
+                                key={idx}
+                                className="text-xs bg-gray-100 px-2 py-1 rounded-md"
+                              >
+                                {item.nombre} x{item.cantidad}
                               </span>
                             ))}
                           </div>
@@ -424,7 +456,7 @@ export default function CajaDashboard() {
                                 disabled
                               >
                                 <Clock className="h-3 w-3 mr-1" />
-                                En preparación
+                                En preparacion
                               </Button>
                             )}
                             <Button
@@ -455,15 +487,23 @@ export default function CajaDashboard() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between border-b pb-2">
                       <span className="text-xs sm:text-sm text-gray-500">Total Ventas</span>
-                      <span className="font-bold text-sm">${stats.totalIngresos.toFixed(2)}</span>
+                      <span className="font-bold text-sm">
+                        ${stats.totalIngresos.toFixed(2)}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between border-b pb-2">
-                      <span className="text-xs sm:text-sm text-gray-500">Pedidos Cobrados</span>
+                      <span className="text-xs sm:text-sm text-gray-500">
+                        Pedidos Cobrados
+                      </span>
                       <span className="font-bold text-sm">{stats.cobrados}</span>
                     </div>
                     <div className="flex items-center justify-between border-b pb-2">
-                      <span className="text-xs sm:text-sm text-gray-500">Pedidos Activos</span>
-                      <span className="font-bold text-sm text-yellow-600">{stats.pendientes}</span>
+                      <span className="text-xs sm:text-sm text-gray-500">
+                        Pedidos Activos
+                      </span>
+                      <span className="font-bold text-sm text-yellow-600">
+                        {stats.pendientes}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t-2">
                       <span className="font-semibold text-sm">Total en Caja</span>
@@ -479,13 +519,17 @@ export default function CajaDashboard() {
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                     <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    Información
+                    Informacion
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-xs sm:text-sm text-gray-600 space-y-2">
-                  <p>Los pedidos <strong>listos</strong> se pueden cobrar individualmente</p>
-                  <p>Las <strong>cuentas de mesa</strong> agrupan múltiples pedidos</p>
-                  <p>Al cobrar una cuenta, la mesa se libera automáticamente</p>
+                  <p>
+                    Los pedidos <strong>listos</strong> se pueden cobrar individualmente
+                  </p>
+                  <p>
+                    Las <strong>cuentas de mesa</strong> agrupan multiples pedidos
+                  </p>
+                  <p>Al cobrar una cuenta, la mesa se libera automaticamente</p>
                   <p>Al cancelar, se notifica al administrador</p>
                 </CardContent>
               </Card>
@@ -501,10 +545,14 @@ export default function CajaDashboard() {
           setPedidoToCancel(null)
         }}
         onConfirm={handleConfirmCancel}
-        pedidoInfo={pedidoToCancel ? {
-          mesa: pedidoToCancel.mesa,
-          total: pedidoToCancel.total
-        } : undefined}
+        pedidoInfo={
+          pedidoToCancel
+            ? {
+                mesa: pedidoToCancel.mesa,
+                total: pedidoToCancel.total
+              }
+            : undefined
+        }
       />
 
       <CobrarCuentaModal
