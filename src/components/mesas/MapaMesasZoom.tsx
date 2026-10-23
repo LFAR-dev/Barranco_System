@@ -52,11 +52,21 @@ export function MapaMesasZoom({
   const [showGrid, setShowGrid] = useState(showGridProp)
   const [guardando, setGuardando] = useState(false)
   const [nuevaMesaCoords, setNuevaMesaCoords] = useState<{ x: number; y: number } | null>(null)
-  const [guides, setGuides] = useState<Array<{ orientation: 'horizontal' | 'vertical'; position: number }>>([])
-  const [viewport, setViewport] = useState<{ x: number; y: number; width: number; height: number }>({
-    x: 0, y: 0, width: 100, height: 100
+  const [guides, setGuides] = useState<
+    Array<{ orientation: 'horizontal' | 'vertical'; position: number }>
+  >([])
+  const [viewport, setViewport] = useState<{
+    x: number
+    y: number
+    width: number
+    height: number
+  }>({
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100
   })
-  
+
   const transformRef = useRef<ReactZoomPanPinchRef>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
@@ -74,21 +84,22 @@ export function MapaMesasZoom({
     hasChanges
   } = useEditorHistory<Mesa[]>([])
 
-  const cambiosPendientes = mesas.filter(m => {
-    const original = mesasDB.find(o => o.id === m.id)
-    if (!original) return true
-    return (
-      original.mapa_x !== m.mapa_x ||
-      original.mapa_y !== m.mapa_y ||
-      original.mapa_ancho !== m.mapa_ancho ||
-      original.mapa_alto !== m.mapa_alto ||
-      original.mapa_rotacion !== m.mapa_rotacion ||
-      original.numero !== m.numero ||
-      original.estado !== m.estado ||
-      original.capacidad !== m.capacidad ||
-      original.categoria !== m.categoria
-    )
-  }).length + mesasDB.filter(o => !mesas.find(m => m.id === o.id)).length
+  const cambiosPendientes =
+    mesas.filter((m) => {
+      const original = mesasDB.find((o) => o.id === m.id)
+      if (!original) return true
+      return (
+        original.mapa_x !== m.mapa_x ||
+        original.mapa_y !== m.mapa_y ||
+        original.mapa_ancho !== m.mapa_ancho ||
+        original.mapa_alto !== m.mapa_alto ||
+        original.mapa_rotacion !== m.mapa_rotacion ||
+        original.numero !== m.numero ||
+        original.estado !== m.estado ||
+        original.capacidad !== m.capacidad ||
+        original.categoria !== m.categoria
+      )
+    }).length + mesasDB.filter((o) => !mesas.find((m) => m.id === o.id)).length
 
   const cargarDatos = useCallback(async () => {
     setLoading(true)
@@ -115,14 +126,24 @@ export function MapaMesasZoom({
     if (isEditing) return
     const channel = supabase
       .channel('mapa_zoom_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, () => {
-        cargarDatos()
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mapa_elementos' }, () => {
-        cargarDatos()
-      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'mesas' },
+        () => {
+          cargarDatos()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'mapa_elementos' },
+        () => {
+          cargarDatos()
+        }
+      )
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [cargarDatos, supabase, isEditing])
 
   // ============================================================
@@ -137,16 +158,16 @@ export function MapaMesasZoom({
     alto?: number,
     rotacion?: number
   ) => {
-    const nuevasMesas = mesas.map(m => 
-      m.id === id 
-        ? { 
-            ...m, 
-            mapa_x: x, 
+    const nuevasMesas = mesas.map((m) =>
+      m.id === id
+        ? {
+            ...m,
+            mapa_x: x,
             mapa_y: y,
             ...(ancho !== undefined && { mapa_ancho: ancho }),
             ...(alto !== undefined && { mapa_alto: alto }),
             ...(rotacion !== undefined && { mapa_rotacion: rotacion })
-          } 
+          }
         : m
     )
     setMesas(nuevasMesas)
@@ -156,7 +177,7 @@ export function MapaMesasZoom({
     setGuardando(true)
     try {
       for (const mesa of mesas) {
-        const original = mesasDB.find(o => o.id === mesa.id)
+        const original = mesasDB.find((o) => o.id === mesa.id)
         if (!original) continue
         if (JSON.stringify(original) !== JSON.stringify(mesa)) {
           await mesaService.actualizar(mesa.id, {
@@ -174,7 +195,7 @@ export function MapaMesasZoom({
       }
 
       for (const original of mesasDB) {
-        if (!mesas.find(m => m.id === original.id)) {
+        if (!mesas.find((m) => m.id === original.id)) {
           await mesaService.eliminar(original.id)
         }
       }
@@ -199,12 +220,12 @@ export function MapaMesasZoom({
   }
 
   const handleDescartarCambios = () => {
-    if (!confirm('¿Descartar todos los cambios no guardados?')) return
+    if (!confirm('Descartar todos los cambios no guardados?')) return
     setMesas(mesasDB, { addToHistory: false })
     resetHistory()
     toast({
       title: 'Cambios descartados',
-      description: 'El mapa volvió al último estado guardado',
+      description: 'El mapa volvio al ultimo estado guardado',
       variant: 'default'
     })
   }
@@ -221,7 +242,7 @@ export function MapaMesasZoom({
       })
       toast({
         title: 'Mesa duplicada',
-        description: `Se creó ${nuevaMesa.numero}`,
+        description: `Se creo ${nuevaMesa.numero}`,
         variant: 'success'
       })
       await cargarDatos()
@@ -236,7 +257,7 @@ export function MapaMesasZoom({
 
   const handleEliminarMesa = async () => {
     if (!mesaSeleccionada) return
-    if (!confirm(`¿Eliminar la mesa ${mesaSeleccionada.numero}? Se desactivará.`)) return
+    if (!confirm(`Eliminar la mesa ${mesaSeleccionada.numero}? Se desactivara.`)) return
     try {
       await mesaService.eliminar(mesaSeleccionada.id)
       toast({
@@ -304,7 +325,7 @@ export function MapaMesasZoom({
     onUndo: undo,
     onRedo: redo,
     onSave: handleGuardarCambios,
-    onToggleGrid: () => setShowGrid(g => !g),
+    onToggleGrid: () => setShowGrid((g) => !g),
     onDelete: mesaSeleccionada ? handleEliminarMesa : undefined,
     onEscape: () => {
       setHerramienta('seleccionar')
@@ -338,7 +359,11 @@ export function MapaMesasZoom({
     const containerHeight = instance.wrapperComponent.offsetHeight
     const newPositionX = -(x / 100) * containerWidth + containerWidth / 2
     const newPositionY = -(y / 100) * containerHeight + containerHeight / 2
-    transformRef.current.setTransform(newPositionX, newPositionY, transformRef.current.state.scale)
+    transformRef.current.setTransform(
+      newPositionX,
+      newPositionY,
+      transformRef.current.state.scale
+    )
   }
 
   if (loading && mesas.length === 0) {
@@ -362,7 +387,7 @@ export function MapaMesasZoom({
           <div>
             <h2 className="text-white font-bold text-lg tracking-wider">BARRANCO</h2>
             <p className="text-amber-200/70 text-xs tracking-widest">
-              {isEditing ? 'MODO EDICIÓN' : 'MAPA DE MESAS'}
+              {isEditing ? 'MODO EDICION' : 'MAPA DE MESAS'}
             </p>
           </div>
         </div>
@@ -409,7 +434,7 @@ export function MapaMesasZoom({
           onGuardar={handleGuardarCambios}
           onDescartar={handleDescartarCambios}
           showGrid={showGrid}
-          onToggleGrid={() => setShowGrid(g => !g)}
+          onToggleGrid={() => setShowGrid((g) => !g)}
           mesaSeleccionada={!!mesaSeleccionada}
           onDuplicar={mesaSeleccionada ? handleDuplicarMesa : undefined}
           onEliminar={mesaSeleccionada ? handleEliminarMesa : undefined}
@@ -424,7 +449,7 @@ export function MapaMesasZoom({
         maxScale={3}
         wheel={{ step: 0.15 }}
         doubleClick={{ disabled: true }}
-        panning={{ 
+        panning={{
           disabled: isEditing || herramienta === 'agregar_mesa'
         }}
         onTransform={handleTransform}
@@ -484,20 +509,23 @@ export function MapaMesasZoom({
               >
                 {showGrid && <GridOverlay size={5} />}
 
-                {/* Guías de alineación (overlay) */}
                 <SnappingGuides guides={guides} />
 
                 {elementos.map((el) => (
                   <ElementoMapa key={el.id} elemento={el} />
                 ))}
 
+                {/* Mesas */}
                 {mesas.map((mesa) => {
                   if (isEditing) {
                     return (
                       <MesaCardEditable
                         key={mesa.id}
                         mesa={mesa}
-                        isSelected={mesaSeleccionada?.id === mesa.id || mesaSeleccionadaId === mesa.id}
+                        isSelected={
+                          mesaSeleccionada?.id === mesa.id ||
+                          mesaSeleccionadaId === mesa.id
+                        }
                         onSelect={handleSelectFromEdit}
                         onDragEnd={handleDragEnd}
                         onSnappingChange={setGuides}
@@ -506,22 +534,6 @@ export function MapaMesasZoom({
                         snapEnabled={showGrid}
                       />
                     )
-                  }{/* Avatares de meseros activos */}
-                  {
-                    !isEditing && meserosActivos.map((mesero) => {
-                      // Posición: sobre la mesa que atiende
-                      const mesaAtendiendo = mesas.find(m => m.id === mesero.mesa_atendiendo_id)
-                      if (!mesaAtendiendo) return null
-
-                      return (
-                        <AvatarMesero
-                          key={mesero.usuario_id}
-                          mesero={mesero}
-                          posicionX={mesaAtendiendo.mapa_x + mesaAtendiendo.mapa_ancho / 2}
-                          posicionY={mesaAtendiendo.mapa_y + mesaAtendiendo.mapa_alto / 2}
-                        />
-                      )
-                    })
                   }
 
                   return (
@@ -530,9 +542,33 @@ export function MapaMesasZoom({
                       mesa={mesa}
                       onClick={(m) => onMesaClick?.(m)}
                       isSelected={mesaSeleccionadaId === mesa.id}
+                      colorMesero={mesa.mesero?.color_mapa || null}
                     />
                   )
                 })}
+
+                {/* Avatares de meseros activos (solo en modo operativo, fuera del map de mesas) */}
+                {!isEditing &&
+                  meserosActivos.map((mesero) => {
+                    const mesaAtendiendo = mesas.find(
+                      (m) => m.id === mesero.mesa_atendiendo_id
+                    )
+                    if (!mesaAtendiendo) return null
+
+                    return (
+                      <AvatarMesero
+                        key={`avatar-${mesero.usuario_id}`}
+                        mesero={mesero}
+                        posicionX={
+                          mesaAtendiendo.mapa_x +
+                          mesaAtendiendo.mapa_ancho / 2
+                        }
+                        posicionY={
+                          mesaAtendiendo.mapa_y + mesaAtendiendo.mapa_alto / 2
+                        }
+                      />
+                    )
+                  })}
               </div>
             </TransformComponent>
 
@@ -548,14 +584,21 @@ export function MapaMesasZoom({
       </TransformWrapper>
 
       <div className="relative z-30 px-6 py-2 bg-black/40 backdrop-blur-md border-t border-amber-500/20 flex items-center justify-between text-xs text-white/60">
-        <span>{mesas.length} mesas · {elementos.length} elementos</span>
+        <span>
+          {mesas.length} mesas · {elementos.length} elementos
+        </span>
         <span className="flex items-center gap-2">
           <Map className="h-3 w-3" />
-          {isEditing ? 'V seleccionar · M agregar · G grid · Ctrl+Z/Y · Ctrl+S guardar' : 'Arrastra para mover · Rueda para zoom'}
+          {isEditing
+            ? 'V seleccionar · M agregar · G grid · Ctrl+Z/Y · Ctrl+S guardar'
+            : 'Arrastra para mover · Rueda para zoom'}
         </span>
       </div>
 
-      <Dialog open={!!nuevaMesaCoords} onOpenChange={(open) => !open && setNuevaMesaCoords(null)}>
+      <Dialog
+        open={!!nuevaMesaCoords}
+        onOpenChange={(open) => !open && setNuevaMesaCoords(null)}
+      >
         <DialogContent className="max-w-md w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Nueva Mesa</DialogTitle>
@@ -576,7 +619,11 @@ function FormularioNuevaMesa({
   onCancel,
   sugerenciaNumero
 }: {
-  onConfirm: (data: { numero: string; categoria: CategoriaMesa; capacidad: number }) => void
+  onConfirm: (data: {
+    numero: string
+    categoria: CategoriaMesa
+    capacidad: number
+  }) => void
   onCancel: () => void
   sugerenciaNumero: string
 }) {
@@ -587,7 +634,7 @@ function FormularioNuevaMesa({
   return (
     <div className="space-y-4 mt-2">
       <div>
-        <Label htmlFor="numero-nueva">Número / Identificador</Label>
+        <Label htmlFor="numero-nueva">Numero / Identificador</Label>
         <Input
           id="numero-nueva"
           value={numero}
@@ -598,7 +645,7 @@ function FormularioNuevaMesa({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label htmlFor="categoria-nueva">Categoría</Label>
+          <Label htmlFor="categoria-nueva">Categoria</Label>
           <select
             id="categoria-nueva"
             value={categoria}

@@ -31,7 +31,7 @@ export interface Mesa {
   mesero_id: string | null
   abierta_en: string | null
   // Relaciones
-  mesero?: { nombre: string; apellido: string } | null
+  mesero?: { nombre: string; apellido: string; color_mapa?: string | null } | null
 }
 
 export interface CrearMesaInput {
@@ -70,7 +70,7 @@ export const mesaService = {
       .from('mesas')
       .select(`
         *,
-        mesero:usuarios!mesero_id(nombre, apellido)
+        mesero:usuarios!mesero_id(nombre, apellido, color_mapa)
       `)
       .order('numero')
 
@@ -95,7 +95,7 @@ export const mesaService = {
       .from('mesas')
       .select(`
         *,
-        mesero:usuarios!mesero_id(nombre, apellido)
+        mesero:usuarios!mesero_id(nombre, apellido, color_mapa)
       `)
       .eq('id', id)
       .maybeSingle()

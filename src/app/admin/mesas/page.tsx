@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft, Plus, RefreshCw, LayoutGrid, List,
-  MousePointer2, Grid3x3
+  MousePointer2, Grid3x3, Shuffle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -18,21 +18,27 @@ import {
 } from '@/components/ui/dialog'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
+import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
 import { mesaService, Mesa, CategoriaMesa } from '@/lib/services/mesaService'
 import { MapaMesasZoom } from '@/components/mesas/MapaMesasZoom'
 import { MesaDetalleModal } from '@/components/mesas/MesaDetalleModal'
+import { RepartirMesasModal } from '@/components/mesas/RepartirMesasModal'
+import { AsignacionMesasPanel } from '@/components/mesas/AsignacionMesasPanel'
 
 export default function MesasPage() {
   const { user } = useAuth()
   const { toast } = useToast()
+  const { jornadaId } = useJornadaWatcher({ enabled: !!user })
+
   const [mesas, setMesas] = useState<Mesa[]>([])
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
-  
+
   const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
   const [isDetalleOpen, setIsDetalleOpen] = useState(false)
   const [isCrearOpen, setIsCrearOpen] = useState(false)
+  const [isRepartirOpen, setIsRepartirOpen] = useState(false)
 
   const [nuevaMesa, setNuevaMesa] = useState({
     numero: '',
@@ -66,8 +72,8 @@ export default function MesasPage() {
   const handleCrearMesa = async () => {
     if (!nuevaMesa.numero.trim()) {
       toast({
-        title: 'Número requerido',
-        description: 'La mesa debe tener un número',
+        title: 'Numero requerido',
+        description: 'La mesa debe tener un numero',
         variant: 'destructive'
       })
       return
@@ -87,7 +93,13 @@ export default function MesasPage() {
         variant: 'success'
       })
       setIsCrearOpen(false)
-      setNuevaMesa({ numero: '', categoria: 'social', capacidad: 4, mapa_x: 50, mapa_y: 50 })
+      setNuevaMesa({
+        numero: '',
+        categoria: 'social',
+        capacidad: 4,
+        mapa_x: 50,
+        mapa_y: 50
+      })
       cargarMesas()
     } catch (error: any) {
       toast({
@@ -102,9 +114,10 @@ export default function MesasPage() {
 
   const stats = {
     total: mesas.length,
-    disponibles: mesas.filter(m => m.estado === 'disponible').length,
-    ocupadas: mesas.filter(m => m.estado === 'ocupada').length,
-    cuentaSolicitada: mesas.filter(m => m.estado === 'cuenta_solicitada').length
+    disponibles: mesas.filter((m) => m.estado === 'disponible').length,
+    ocupadas: mesas.filter((m) => m.estado === 'ocupada').length,
+    cuentaSolicitada: mesas.filter((m) => m.estado === 'cuenta_solicitada')
+      .length
   }
 
   return (
@@ -120,29 +133,48 @@ export default function MesasPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Mapa de Mesas</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+                Mapa de Mesas
+              </h1>
               <p className="text-sm text-gray-500">
-                Gestión visual del establecimiento
+                Gestion visual del establecimiento
               </p>
             </div>
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-2">
+            {jornadaId && (
+              <Button
+                onClick={() => setIsRepartirOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                title="Repartir mesas entre meseros"
+              >
+                <Shuffle className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Repartir mesas</span>
+                <span className="sm:hidden">Repartir</span>
+              </Button>
+            )}
             <Button
               variant={isEditing ? 'default' : 'outline'}
               onClick={() => setIsEditing(!isEditing)}
-              className={isEditing ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+              className={
+                isEditing ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''
+              }
             >
               <MousePointer2 className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{isEditing ? 'Salir Edición' : 'Modo Edición'}</span>
+              <span className="hidden sm:inline">
+                {isEditing ? 'Salir Edicion' : 'Modo Edicion'}
+              </span>
               <span className="sm:hidden">{isEditing ? 'Salir' : 'Editar'}</span>
             </Button>
             {isEditing && (
               <Button
                 variant={showGrid ? 'default' : 'outline'}
                 onClick={() => setShowGrid(!showGrid)}
-                className={showGrid ? 'bg-amber-500 hover:bg-amber-600 text-white' : ''}
-                title="Mostrar/Ocultar cuadrícula"
+                className={
+                  showGrid ? 'bg-amber-500 hover:bg-amber-600 text-white' : ''
+                }
+                title="Mostrar/Ocultar cuadricula"
               >
                 <Grid3x3 className="h-4 w-4" />
               </Button>
@@ -168,7 +200,9 @@ export default function MesasPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Total</p>
-                  <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.total}</p>
+                  <p className="text-lg sm:text-xl font-bold text-gray-900">
+                    {stats.total}
+                  </p>
                 </div>
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <LayoutGrid className="h-4 w-4 text-blue-600" />
@@ -181,7 +215,9 @@ export default function MesasPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Disponibles</p>
-                  <p className="text-lg sm:text-xl font-bold text-green-600">{stats.disponibles}</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-600">
+                    {stats.disponibles}
+                  </p>
                 </div>
                 <div className="p-2 bg-green-100 rounded-lg">
                   <List className="h-4 w-4 text-green-600" />
@@ -194,7 +230,9 @@ export default function MesasPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Ocupadas</p>
-                  <p className="text-lg sm:text-xl font-bold text-red-600">{stats.ocupadas}</p>
+                  <p className="text-lg sm:text-xl font-bold text-red-600">
+                    {stats.ocupadas}
+                  </p>
                 </div>
                 <div className="p-2 bg-red-100 rounded-lg">
                   <LayoutGrid className="h-4 w-4 text-red-600" />
@@ -207,7 +245,9 @@ export default function MesasPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Cuenta pedida</p>
-                  <p className="text-lg sm:text-xl font-bold text-amber-600">{stats.cuentaSolicitada}</p>
+                  <p className="text-lg sm:text-xl font-bold text-amber-600">
+                    {stats.cuentaSolicitada}
+                  </p>
                 </div>
                 <div className="p-2 bg-amber-100 rounded-lg">
                   <LayoutGrid className="h-4 w-4 text-amber-600" />
@@ -217,25 +257,34 @@ export default function MesasPage() {
           </Card>
         </div>
 
-        {/* Mapa */}
-        {loading && mesas.length === 0 ? (
-          <Card>
-            <CardContent className="p-12 text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600 mx-auto" />
-            </CardContent>
-          </Card>
-        ) : (
-          <MapaMesasZoom
-            onMesaClick={handleMesaClick}
-            editable={user.rol === 'admin'}
-            isEditing={isEditing}
-            showGrid={showGrid}
-            mesaSeleccionadaId={mesaSeleccionada?.id}
-          />
-        )}
+        {/* Panel de asignacion + Mapa */}
+        <div className="relative">
+          {isEditing && jornadaId && user.rol === 'admin' && (
+            <AsignacionMesasPanel
+              jornadaId={jornadaId}
+              onRefresh={cargarMesas}
+            />
+          )}
+
+          {loading && mesas.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600 mx-auto" />
+              </CardContent>
+            </Card>
+          ) : (
+            <MapaMesasZoom
+              onMesaClick={handleMesaClick}
+              editable={user.rol === 'admin'}
+              isEditing={isEditing}
+              showGrid={showGrid}
+              mesaSeleccionadaId={mesaSeleccionada?.id}
+            />
+          )}
+        </div>
       </div>
 
-      {/* Modal de detalle/edición */}
+      {/* Modal de detalle/edicion */}
       <MesaDetalleModal
         mesa={mesaSeleccionada}
         isOpen={isDetalleOpen}
@@ -259,22 +308,29 @@ export default function MesasPage() {
 
           <div className="space-y-4 mt-2">
             <div>
-              <Label htmlFor="numero">Número / Identificador</Label>
+              <Label htmlFor="numero">Numero / Identificador</Label>
               <Input
                 id="numero"
                 value={nuevaMesa.numero}
-                onChange={(e) => setNuevaMesa({ ...nuevaMesa, numero: e.target.value })}
+                onChange={(e) =>
+                  setNuevaMesa({ ...nuevaMesa, numero: e.target.value })
+                }
                 placeholder="Ej: T12, E6, X1..."
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="categoria">Categoría</Label>
+                <Label htmlFor="categoria">Categoria</Label>
                 <select
                   id="categoria"
                   value={nuevaMesa.categoria}
-                  onChange={(e) => setNuevaMesa({ ...nuevaMesa, categoria: e.target.value as CategoriaMesa })}
+                  onChange={(e) =>
+                    setNuevaMesa({
+                      ...nuevaMesa,
+                      categoria: e.target.value as CategoriaMesa
+                    })
+                  }
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="especial">Especial</option>
@@ -291,45 +347,77 @@ export default function MesasPage() {
                   type="number"
                   min="1"
                   value={nuevaMesa.capacidad}
-                  onChange={(e) => setNuevaMesa({ ...nuevaMesa, capacidad: parseInt(e.target.value) || 4 })}
+                  onChange={(e) =>
+                    setNuevaMesa({
+                      ...nuevaMesa,
+                      capacidad: parseInt(e.target.value) || 4
+                    })
+                  }
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Posición X (%)</Label>
+                <Label className="text-xs">Posicion X (%)</Label>
                 <Input
                   type="number"
                   min="0"
                   max="100"
                   value={nuevaMesa.mapa_x}
-                  onChange={(e) => setNuevaMesa({ ...nuevaMesa, mapa_x: parseFloat(e.target.value) })}
+                  onChange={(e) =>
+                    setNuevaMesa({
+                      ...nuevaMesa,
+                      mapa_x: parseFloat(e.target.value)
+                    })
+                  }
                 />
               </div>
               <div>
-                <Label className="text-xs">Posición Y (%)</Label>
+                <Label className="text-xs">Posicion Y (%)</Label>
                 <Input
                   type="number"
                   min="0"
                   max="100"
                   value={nuevaMesa.mapa_y}
-                  onChange={(e) => setNuevaMesa({ ...nuevaMesa, mapa_y: parseFloat(e.target.value) })}
+                  onChange={(e) =>
+                    setNuevaMesa({
+                      ...nuevaMesa,
+                      mapa_y: parseFloat(e.target.value)
+                    })
+                  }
                 />
               </div>
             </div>
 
             <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={() => setIsCrearOpen(false)} className="flex-1">
+              <Button
+                variant="outline"
+                onClick={() => setIsCrearOpen(false)}
+                className="flex-1"
+              >
                 Cancelar
               </Button>
-              <Button onClick={handleCrearMesa} className="flex-1 bg-rose-600 hover:bg-rose-700">
+              <Button
+                onClick={handleCrearMesa}
+                className="flex-1 bg-rose-600 hover:bg-rose-700"
+              >
                 Crear Mesa
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de repartir mesas (solo admin, solo con jornada activa) */}
+      {jornadaId && (
+        <RepartirMesasModal
+          isOpen={isRepartirOpen}
+          onClose={() => setIsRepartirOpen(false)}
+          jornadaId={jornadaId}
+          onSuccess={cargarMesas}
+        />
+      )}
     </div>
   )
 }
