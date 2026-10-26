@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Plus, RefreshCw, Coffee, Clock,
-  CheckCircle, AlertCircle, UserCircle, DollarSign
+  CheckCircle, AlertCircle, UserCircle, DollarSign, Users
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import { mesaService, Mesa } from '@/lib/services/mesaService'
 import { cuentaService, CuentaAbierta } from '@/lib/services/cuentaService'
 import { MapaMesasZoom } from '@/components/mesas/MapaMesasZoom'
 import { MesaAccionesPanel } from '@/components/mesas/MesaAccionesPanel'
+import { useMeserosActivos } from '@/hooks/useMeserosActivos'
 
 export default function MeseroOrdersPage() {
   const { user } = useAuth()
@@ -27,6 +28,8 @@ export default function MeseroOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
+  
+  const { meseros: meserosActivos } = useMeserosActivos()
 
   useEffect(() => {
     if (user) {
@@ -177,6 +180,39 @@ export default function MeseroOrdersPage() {
           </Card>
         )}
 
+        {/* Leyenda de colores de meseros */}
+        {meserosActivos.length > 0 && (
+          <Card className="mb-3">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1 text-xs font-medium text-gray-700 shrink-0">
+                  <Users className="h-3.5 w-3.5" />
+                  Meseros activos:
+                </div>
+                {meserosActivos.map((m) => {
+                  const esYo = m.usuario_id === user?.id
+                  return (
+                    <div
+                      key={m.usuario_id}
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs ${
+                        esYo
+                          ? 'bg-amber-50 border-amber-300 text-amber-900 font-semibold'
+                          : 'bg-gray-50 border-gray-200 text-gray-700'
+                      }`}
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full border border-white"
+                        style={{ backgroundColor: m.color_mapa || '#6b7280' }}
+                      />
+                      {m.nombre} {esYo && <span className="text-[9px]">(tu)</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Mapa */}
         {loading && mesas.length === 0 ? (
           <Card>
@@ -188,6 +224,7 @@ export default function MeseroOrdersPage() {
           <MapaMesasZoom
             onMesaClick={handleMesaClick}
             mesaSeleccionadaId={mesaSeleccionada?.id}
+            meseroActualId={user?.id || null}
           />
         )}
 

@@ -35,6 +35,7 @@ interface MapaMesasZoomProps {
   isEditing?: boolean
   mesaSeleccionadaId?: string
   showGrid?: boolean
+  meseroActualId?: string | null
 }
 
 export function MapaMesasZoom({
@@ -42,7 +43,8 @@ export function MapaMesasZoom({
   editable = false,
   isEditing = false,
   mesaSeleccionadaId,
-  showGrid: showGridProp = false
+  showGrid: showGridProp = false,
+  meseroActualId = null
 }: MapaMesasZoomProps) {
   const [mesasDB, setMesasDB] = useState<Mesa[]>([])
   const [elementos, setElementos] = useState<any[]>([])
@@ -145,10 +147,6 @@ export function MapaMesasZoom({
       supabase.removeChannel(channel)
     }
   }, [cargarDatos, supabase, isEditing])
-
-  // ============================================================
-  // HANDLERS
-  // ============================================================
 
   const handleDragEnd = (
     id: string,
@@ -515,7 +513,6 @@ export function MapaMesasZoom({
                   <ElementoMapa key={el.id} elemento={el} />
                 ))}
 
-                {/* Mesas */}
                 {mesas.map((mesa) => {
                   if (isEditing) {
                     return (
@@ -543,11 +540,11 @@ export function MapaMesasZoom({
                       onClick={(m) => onMesaClick?.(m)}
                       isSelected={mesaSeleccionadaId === mesa.id}
                       colorMesero={mesa.mesero?.color_mapa || null}
+                      esMiMesa={meseroActualId === mesa.mesero_id}
                     />
                   )
                 })}
 
-                {/* Avatares de meseros activos (solo en modo operativo, fuera del map de mesas) */}
                 {!isEditing &&
                   meserosActivos.map((mesero) => {
                     const mesaAtendiendo = mesas.find(

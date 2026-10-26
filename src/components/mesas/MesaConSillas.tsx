@@ -8,6 +8,7 @@ interface MesaConSillasProps {
   onClick: (mesa: Mesa) => void
   isSelected?: boolean
   colorMesero?: string | null
+  esMiMesa?: boolean
 }
 
 const CONFIG = {
@@ -113,7 +114,8 @@ export function MesaConSillas({
   mesa,
   onClick,
   isSelected,
-  colorMesero
+  colorMesero,
+  esMiMesa = false
 }: MesaConSillasProps) {
   const cat = CONFIG.categorias[mesa.categoria] || CONFIG.categorias.social
   const est = CONFIG.estados[mesa.estado] || CONFIG.estados.disponible
@@ -136,6 +138,7 @@ export function MesaConSillas({
         ${isSelected ? 'scale-110 z-20' : 'hover:scale-105 z-10'}
         focus:outline-none focus-visible:ring-4 focus-visible:ring-offset-2 focus-visible:ring-blue-500
         touch-none
+        ${!esMiMesa && mesa.mesero_id ? 'opacity-60 hover:opacity-100' : ''}
       `}
       style={{
         left: `${mesa.mapa_x}%`,
@@ -241,6 +244,9 @@ export function MesaConSillas({
       >
         <div className="font-semibold">{mesa.numero}</div>
         <div className="text-gray-300 text-[8px]">{est.label}</div>
+        {esMiMesa && (
+          <div className="text-amber-300 text-[8px] font-semibold">Tu mesa</div>
+        )}
         {mesa.mesero && (
           <div className="text-gray-300 text-[8px] flex items-center gap-1">
             <span

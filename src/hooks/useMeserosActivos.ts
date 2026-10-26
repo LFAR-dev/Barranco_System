@@ -8,6 +8,7 @@ export interface MeseroActivo {
   nombre: string
   apellido: string
   avatar_url: string | null
+  color_mapa: string | null
   mesa_atendiendo_id: string | null
   mesa_numero: string | null
   latitud: number | null
@@ -28,7 +29,7 @@ export function useMeserosActivos() {
     try {
       const { data, error } = await supabase
         .from('ubicaciones_meseros')
-        .select(`
+                .select(`
           usuario_id,
           mesa_atendiendo_id,
           latitud,
@@ -36,9 +37,8 @@ export function useMeserosActivos() {
           gps_activo,
           gps_denegado,
           ultima_actualizacion,
-          usuario:usuarios!usuario_id(nombre, apellido, avatar_url, activo, rol)
+          usuario:usuarios!usuario_id(nombre, apellido, avatar_url, activo, rol, color_mapa)
         `)
-
       if (error) {
         console.error('Error al cargar meseros:', error)
         return
@@ -68,10 +68,11 @@ export function useMeserosActivos() {
           const lastUpdate = new Date(m.ultima_actualizacion).getTime()
           const minDesdeUpdate = (ahora - lastUpdate) / 60000
           return {
-            usuario_id: m.usuario_id,
+             usuario_id: m.usuario_id,
             nombre: m.usuario.nombre || '',
             apellido: m.usuario.apellido || '',
             avatar_url: m.usuario.avatar_url,
+            color_mapa: m.usuario.color_mapa || null,
             mesa_atendiendo_id: m.mesa_atendiendo_id,
             mesa_numero: m.mesa_atendiendo_id ? (mesasMap[m.mesa_atendiendo_id] || null) : null,
             latitud: m.latitud,

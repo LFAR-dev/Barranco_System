@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   User, Camera, Loader2, CheckCircle, LogOut,
-  Calendar, CheckCircle2, XCircle, Lock, AlertTriangle
+  Calendar, CheckCircle2, XCircle, Lock, AlertTriangle, Users
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AvatarWithViewer } from '@/components/ui/AvatarWithViewer'
@@ -13,6 +13,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { useGreeting } from '@/hooks/useGreeting'
 import { useToast } from '@/hooks/use-toast'
 import { escucharEventosJornada } from '@/lib/events/jornadaEvents'
+import { NotificationSoundToggle } from '@/components/shared/NotificationSoundToggle'
+import { GestionPersonalJornadaModal } from '@/components/admin/jornada/GestionPersonalJornadaModal'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +23,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { NotificationSoundToggle } from '@/components/shared/NotificationSoundToggle'
 
 type Rol = 'admin' | 'bartender' | 'mesero' | 'caja'
 
@@ -58,6 +59,7 @@ export function UserMenu({
   const [uploading, setUploading] = useState(false)
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [jornada, setJornada] = useState<Jornada | null>(null)
+  const [isGestionPersonalOpen, setIsGestionPersonalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const colores = rolColors[rol]
@@ -194,6 +196,11 @@ export function UserMenu({
     if (onCerrarTurnoClick) setTimeout(() => onCerrarTurnoClick(), 150)
   }
 
+  const handleGestionPersonalClick = () => {
+    setIsOpen(false)
+    setTimeout(() => setIsGestionPersonalOpen(true), 150)
+  }
+
   return (
     <>
       <input
@@ -291,6 +298,22 @@ export function UserMenu({
                 </DropdownMenuItem>
               )}
 
+              {/* Gestionar personal — solo si jornada activa */}
+              {jornada && (
+                <DropdownMenuItem
+                  onClick={handleGestionPersonalClick}
+                  className="cursor-pointer text-blue-700 focus:text-blue-800 focus:bg-blue-50"
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold">Gestionar personal</p>
+                    <p className="text-[10px] text-blue-600">
+                      Agregar o quitar del turno
+                    </p>
+                  </div>
+                </DropdownMenuItem>
+              )}
+
               {/* Botón de Cierre Definitivo — solo admin, solo si jornada activa */}
               {jornada && onCerrarTurnoClick && (
                 <DropdownMenuItem
@@ -322,7 +345,7 @@ export function UserMenu({
             {uploadSuccess && <CheckCircle className="ml-auto h-4 w-4 text-green-500" />}
           </DropdownMenuItem>
 
-                     {onEditProfile && (
+          {onEditProfile && (
             <DropdownMenuItem onClick={handleEditProfileClick} className="cursor-pointer">
               <User className="mr-2 h-4 w-4" />
               <span>Mi Perfil</span>
@@ -344,16 +367,6 @@ export function UserMenu({
             </>
           )}
 
-          <DropdownMenuSeparator />
-{user?.id && (
-  <>
-    <DropdownMenuSeparator />
-    <div className="px-2 py-1.5 flex items-center justify-between">
-      <span className="text-xs text-gray-600">Sonido de notificaciones</span>
-      <NotificationSoundToggle usuarioId={user.id} />
-    </div>
-  </>
-)}
           {esAdmin ? (
             <DropdownMenuItem
               onClick={handleLogoutClick}
@@ -373,6 +386,18 @@ export function UserMenu({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {jornada && (
+        <GestionPersonalJornadaModal
+          isOpen={isGestionPersonalOpen}
+          onClose={() => {
+            setIsGestionPersonalOpen(false)
+            cargarJornada()
+          }}
+          jornadaId={jornada.id}
+          onSuccess={cargarJornada}
+        />
+      )}
     </>
   )
 }
