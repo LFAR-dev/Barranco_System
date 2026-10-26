@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   X, Users, Plus, Receipt, Clock, CheckCircle,
-  UserCircle, AlertCircle, Loader2
+  UserCircle, AlertCircle, Loader2, HeartHandshake
 } from 'lucide-react'
 import {
   Dialog,
@@ -31,10 +31,16 @@ interface MesaAccionesPanelProps {
 const ESTADOS_LABEL: Record<string, { label: string; color: string }> = {
   disponible: { label: 'Disponible', color: 'bg-green-100 text-green-700' },
   ocupada: { label: 'Ocupada', color: 'bg-red-100 text-red-700' },
-  cuenta_solicitada: { label: 'Cuenta solicitada', color: 'bg-amber-100 text-amber-700' },
+  cuenta_solicitada: {
+    label: 'Cuenta solicitada',
+    color: 'bg-amber-100 text-amber-700'
+  },
   cobrando: { label: 'Cobrando', color: 'bg-blue-100 text-blue-700' },
   reservada: { label: 'Reservada', color: 'bg-purple-100 text-purple-700' },
-  fuera_servicio: { label: 'Fuera de servicio', color: 'bg-gray-100 text-gray-700' }
+  fuera_servicio: {
+    label: 'Fuera de servicio',
+    color: 'bg-gray-100 text-gray-700'
+  }
 }
 
 export function MesaAccionesPanel({
@@ -51,6 +57,7 @@ export function MesaAccionesPanel({
   const [cargandoCuenta, setCargandoCuenta] = useState(false)
   const [comensales, setComensales] = useState(2)
   const [modoAbrirCuenta, setModoAbrirCuenta] = useState(false)
+  const [modoAyuda, setModoAyuda] = useState(false)
 
   useEffect(() => {
     if (mesa && (mesa.estado === 'ocupada' || mesa.estado === 'cuenta_solicitada')) {
@@ -59,6 +66,11 @@ export function MesaAccionesPanel({
       setCuenta(null)
     }
   }, [mesa?.id, mesa?.estado])
+
+  useEffect(() => {
+    setModoAyuda(false)
+    setModoAbrirCuenta(false)
+  }, [mesa?.id])
 
   const cargarCuenta = async () => {
     if (!mesa) return
@@ -102,6 +114,12 @@ export function MesaAccionesPanel({
     onClose()
   }
 
+  const handleIrAAyudar = () => {
+    if (!mesa) return
+    router.push(`/mesero/orders/new?mesa=${mesa.id}&ayudando=true`)
+    onClose()
+  }
+
   const handleSolicitarCuenta = async () => {
     if (!mesa) return
     setLoading(true)
@@ -127,7 +145,7 @@ export function MesaAccionesPanel({
 
   const handleLiberarMesa = async () => {
     if (!mesa) return
-    if (!confirm(`¿Liberar la mesa ${mesa.numero}? La cuenta se cerrará.`)) return
+    if (!confirm(`Liberar la mesa ${mesa.numero}? La cuenta se cerrara.`)) return
     setLoading(true)
     try {
       if (cuenta) {
@@ -135,7 +153,7 @@ export function MesaAccionesPanel({
       }
       toast({
         title: 'Mesa liberada',
-        description: `Mesa ${mesa.numero} está disponible`,
+        description: `Mesa ${mesa.numero} esta disponible`,
         variant: 'success'
       })
       onSuccess?.()
@@ -159,22 +177,24 @@ export function MesaAccionesPanel({
   const estaOcupada = mesa.estado === 'ocupada'
   const cuentaSolicitada = mesa.estado === 'cuenta_solicitada'
 
-  const tiempoAbierta = mesa.abierta_en 
+  const tiempoAbierta = mesa.abierta_en
     ? Math.floor((Date.now() - new Date(mesa.abierta_en).getTime()) / 60000)
     : 0
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="
-        max-w-md w-full 
-        sm:w-[95vw] 
+      <DialogContent
+        className="
+        max-w-md w-full
+        sm:w-[95vw]
         max-h-[90vh] sm:max-h-[90vh]
-        overflow-y-auto 
+        overflow-y-auto
         p-0
         fixed bottom-0 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2
         rounded-t-2xl sm:rounded-2xl
         sm:left-1/2 sm:-translate-x-1/2
-      ">
+      "
+      >
         <DialogHeader className="p-4 pb-3 border-b bg-gradient-to-r from-gray-50 to-white sticky top-0 z-10">
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -182,8 +202,12 @@ export function MesaAccionesPanel({
                 {mesa.numero}
               </div>
               <div>
-                <p className="text-base font-bold text-gray-900">Mesa {mesa.numero}</p>
-                <p className="text-xs text-gray-500 capitalize">{mesa.categoria}</p>
+                <p className="text-base font-bold text-gray-900">
+                  Mesa {mesa.numero}
+                </p>
+                <p className="text-xs text-gray-500 capitalize">
+                  {mesa.categoria}
+                </p>
               </div>
             </div>
             <Badge className={estadoInfo.color}>{estadoInfo.label}</Badge>
@@ -191,49 +215,56 @@ export function MesaAccionesPanel({
         </DialogHeader>
 
         <div className="p-4 space-y-4">
-          {/* Info básica */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-gray-50 rounded-lg p-2.5">
               <p className="text-[10px] sm:text-xs text-gray-500 flex items-center gap-1">
                 <Users className="h-3 w-3" /> Capacidad
               </p>
-              <p className="text-sm font-semibold text-gray-900">{mesa.capacidad} personas</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {mesa.capacidad} personas
+              </p>
             </div>
             {estaOcupada || cuentaSolicitada ? (
               <div className="bg-orange-50 rounded-lg p-2.5">
                 <p className="text-[10px] sm:text-xs text-orange-700 flex items-center gap-1">
                   <Clock className="h-3 w-3" /> Tiempo abierta
                 </p>
-                <p className="text-sm font-semibold text-orange-900">{tiempoAbierta} min</p>
+                <p className="text-sm font-semibold text-orange-900">
+                  {tiempoAbierta} min
+                </p>
               </div>
             ) : (
               <div className="bg-green-50 rounded-lg p-2.5">
                 <p className="text-[10px] sm:text-xs text-green-700 flex items-center gap-1">
                   <CheckCircle className="h-3 w-3" /> Lista
                 </p>
-                <p className="text-sm font-semibold text-green-900">Disponible</p>
+                <p className="text-sm font-semibold text-green-900">
+                  Disponible
+                </p>
               </div>
             )}
           </div>
 
-          {/* Mesero asignado */}
           {mesa.mesero && (
-            <div className={`rounded-lg p-2.5 border ${
-              esMiMesa 
-                ? 'bg-blue-50 border-blue-200' 
-                : 'bg-gray-50 border-gray-200'
-            }`}>
+            <div
+              className={`rounded-lg p-2.5 border ${
+                esMiMesa ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'
+              }`}
+            >
               <p className="text-[10px] sm:text-xs text-gray-600 flex items-center gap-1 mb-1">
                 <UserCircle className="h-3 w-3" /> Mesero
               </p>
               <p className="text-sm font-semibold text-gray-900">
                 {mesa.mesero.nombre} {mesa.mesero.apellido}
-                {esMiMesa && <Badge className="ml-2 bg-blue-100 text-blue-700 text-[9px]">Tú</Badge>}
+                {esMiMesa && (
+                  <Badge className="ml-2 bg-blue-100 text-blue-700 text-[9px]">
+                    Tu
+                  </Badge>
+                )}
               </p>
             </div>
           )}
 
-          {/* Cuenta activa */}
           {cargandoCuenta && (
             <div className="flex items-center justify-center py-2">
               <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
@@ -243,7 +274,9 @@ export function MesaAccionesPanel({
           {cuenta && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] sm:text-xs text-amber-700 font-medium">Cuenta abierta</p>
+                <p className="text-[10px] sm:text-xs text-amber-700 font-medium">
+                  Cuenta abierta
+                </p>
                 <Badge className="bg-amber-100 text-amber-700 text-[9px]">
                   {cuenta.comensales} comensales
                 </Badge>
@@ -254,10 +287,9 @@ export function MesaAccionesPanel({
             </div>
           )}
 
-          {/* Formulario abrir cuenta */}
           {modoAbrirCuenta && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
-              <Label className="text-xs">Número de comensales</Label>
+              <Label className="text-xs">Numero de comensales</Label>
               <Input
                 type="number"
                 min="1"
@@ -287,7 +319,41 @@ export function MesaAccionesPanel({
             </div>
           )}
 
-          {/* Acciones según estado */}
+          {modoAyuda && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <HeartHandshake className="h-4 w-4 text-purple-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-purple-900">
+                    Ayudar a {mesa.mesero?.nombre} {mesa.mesero?.apellido}
+                  </p>
+                  <p className="text-[10px] text-purple-700 mt-1">
+                    El pedido se agregara a la cuenta de la mesa. Tu apareceras
+                    como quien ayudo, y {mesa.mesero?.nombre} recibira una
+                    notificacion.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setModoAyuda(false)}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleIrAAyudar}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  Continuar
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2 pt-3 border-t">
             {estaDisponible && !modoAbrirCuenta && (
               <>
@@ -339,15 +405,24 @@ export function MesaAccionesPanel({
               </>
             )}
 
-            {estaOcupada && !esMiMesa && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                  <p className="text-xs text-amber-800">
-                    Esta mesa está siendo atendida por otro mesero.
-                  </p>
+            {estaOcupada && !esMiMesa && !modoAyuda && (
+              <>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <p className="text-xs text-amber-800">
+                      Esta mesa esta siendo atendida por otro mesero.
+                    </p>
+                  </div>
                 </div>
-              </div>
+                <Button
+                  onClick={() => setModoAyuda(true)}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  <HeartHandshake className="h-4 w-4 mr-2" />
+                  Ayudar a companero
+                </Button>
+              </>
             )}
 
             {cuentaSolicitada && (
@@ -372,11 +447,7 @@ export function MesaAccionesPanel({
               </div>
             )}
 
-            <Button
-              onClick={onClose}
-              variant="ghost"
-              className="w-full"
-            >
+            <Button onClick={onClose} variant="ghost" className="w-full">
               Cerrar
             </Button>
           </div>

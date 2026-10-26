@@ -37,7 +37,8 @@ interface Producto {
 export default function NewOrderPage() {
   const { user } = useAuth()
   const router = useRouter()
-  const searchParams = useSearchParams()
+const searchParams = useSearchParams()
+const ayudando = searchParams.get('ayudando') === 'true'
   const { toast } = useToast()
   const supabase = createClient()
   
@@ -221,6 +222,9 @@ export default function NewOrderPage() {
       if (cuentaActiva) {
         pedidoData.cuenta_abierta_id = cuentaActiva.id
       }
+            if (ayudando) {
+        pedidoData.ayudado_por_id = user.id
+      }
 
       // 3. Insertar en pedidos
       const { data, error } = await supabase
@@ -228,6 +232,28 @@ export default function NewOrderPage() {
         .insert([pedidoData])
         .select()
         .single()
+              // Si es ayuda, notificar al mesero titular
+      if (ayudando && data.mesero_id !== user.id) {
+        try {
+          const { data: titular } = await supabase
+            .from('usuarios')
+            .select('nombre, apellido')
+            .eq('id', data.mesero_id)
+            .maybeSingle()
+
+          await supabase.from('notificaciones_mesero').insert([
+            {
+              mesero_id: data.mesero_id,
+              pedido_id: data.id,
+              tipo: 'ayuda_mesero',
+              mensaje: `${user.nombre || 'Un companero'} te ayudo en Mesa ${mesaInfo?.numero || 'N/A'} con ${cart.length} items`,
+              jornada_id: data.jornada_id
+            }
+          ])
+        } catch (e) {
+          console.error('No se pudo notificar ayuda:', e)
+        }
+      }
 
       if (error) throw error
 
@@ -247,10 +273,11 @@ export default function NewOrderPage() {
           leida: false
         }])
 
-      // 6. Toast de éxito
-      toast({
-        title: 'Pedido enviado',
-        description: `Pedido de mesa ${mesaInfo?.numero || 'N/A'} enviado al bartender`,
+          toast({
+        title: ayudando ? 'Ayuda registrada' : 'Pedido enviado',
+        description: ayudando
+          ? `Pedido agregado en ayuda a la mesa ${mesaInfo?.numero || 'N/A'}`
+          : `Pedido de mesa ${mesaInfo?.numero || 'N/A'} enviado al bartender`,
         variant: 'success'
       })
 

@@ -21,6 +21,8 @@ export interface Order {
   updated_at: string
   venta_id?: string
   jornada_id?: string
+  cuenta_abierta_id?: string | null
+  ayudado_por_id?: string | null
 }
 
 export interface CrearPedidoResult {
@@ -42,9 +44,9 @@ export const orderService = {
         bartender:bartenders!bartender_id(nombre_completo)
       `)
       .order('created_at', { ascending: false })
-    
+
     if (estado) query = query.eq('estado', estado)
-    
+
     const { data, error } = await query
     if (error) throw new Error('No se pudieron cargar los pedidos')
     return data || []
@@ -61,9 +63,9 @@ export const orderService = {
       `)
       .eq('jornada_id', jornadaId)
       .order('created_at', { ascending: false })
-    
+
     if (estado) query = query.eq('estado', estado)
-    
+
     const { data, error } = await query
     if (error) throw new Error('No se pudieron cargar los pedidos de la jornada')
     return data || []
@@ -81,7 +83,7 @@ export const orderService = {
       .in('estado', ['pendiente', 'preparando', 'listo'])
       .or(`jornada_id.eq.${jornadaId},jornada_id.is.null`)
       .order('created_at', { ascending: true })
-    
+
     if (error) throw new Error('No se pudieron cargar los pedidos pendientes')
     return data || []
   },
@@ -97,515 +99,292 @@ export const orderService = {
       `)
       .eq('id', id)
       .maybeSingle()
-    
+
     if (error) throw new Error('No se pudo cargar el pedido')
     return data
   },
 
-  // ============================================================
-  // CREAR PEDIDO (con soporte para destino "mesa")
-  // ============================================================
-  
   /**
    * Crea un pedido.
-   * 
+   *
    * Si `meseroAsignadoId` y `mesaId` se proporcionan:
    *   - El pedido se crea con destino "mesa" y se asigna al mesero
    *   - Se notifica al mesero Y al bartender
-   * 
-   * Si no se proporcionan:
-   *   - El pedido es para "recoger en caja"
-   *   - Se notifica solo al bartender
+   *
+   * Si `ayudadoPorId` se proporciona:
+   *   - Se registra que este usuario ayudo al mesero titular
+   *   - Se notifica al mesero titular
    */
   async createOrder(order: {
     mesero_id: string
-    meseroAsignadoId?: string  // ← NUEVO: mesero que llevará el pedido a la mesa
+    meseroAsignadoId?: string
     mesa?: string
-    mesaId?: string             // ← NUEVO: id de la mesa
+    mesaId?: string
     items: OrderItem[]
     total: number
     notas?: string
     tipo_origen?: 'mesero' | 'caja'
+    ayudadoPorId?: string
+    cuentaAbiertaId?: string | null
+    jornadaId?: string | null
   }): Promise<Order> {
     const supabase = createClient()
-    
+
     if (!order.mesero_id) throw new Error('Se requiere un usuario para crear el pedido')
-    if (!order.items || order.items.length === 0) throw new Error('El pedido debe tener al menos un producto')
+    if (!order.items || order.items.length === 0)
+      throw new Error('El pedido debe tener al menos un producto')
     if (order.total <= 0) throw new Error('El total del pedido debe ser mayor a 0')
 
-    // Determinar mesero final: si viene meseroAsignadoId, ese es el dueño del pedido.
-    // Si no, el que lo crea (caja o mesero).
     const meseroFinalId = order.meseroAsignadoId || order.mesero_id
+
+    let jornadaId = order.jornadaId
+    if (jornadaId === undefined) {
+      const { data: jornada } = await supabase
+        .from('jornadas')
+        .select('id')
+        .eq('estado', 'activa')
+        .maybeSingle()
+      jornadaId = jornada?.id || null
+    }
 
     const { data, error } = await supabase
       .from('pedidos')
-      .insert([{
-        mesero_id: meseroFinalId,
-        mesa: order.mesa || 'Caja',
-        items: order.items,
-        total: order.total,
-        estado: 'pendiente',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }])
+      .insert([
+        {
+          mesero_id: meseroFinalId,
+          mesa: order.mesa || 'Caja',
+          items: order.items,
+          total: order.total,
+          estado: 'pendiente',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          jornada_id: jornadaId || null,
+          cuenta_abierta_id: order.cuentaAbiertaId || null,
+          ayudado_por_id: order.ayudadoPorId || null
+        }
+      ])
       .select()
       .maybeSingle()
-    
+
     if (error) throw new Error('No se pudo crear el pedido')
     if (!data) throw new Error('No se pudo crear el pedido')
 
-    // Notificar al bartender
     try {
       await notificationService.notificarBartender({
         pedidoId: data.id,
         tipo: 'nuevo_pedido',
         mensaje: order.meseroAsignadoId
-          ? `📦 Nuevo pedido para Mesa ${order.mesa} - ${order.items.length} items`
-          : `📦 Nuevo pedido de ${order.mesa || 'Caja'} - ${order.items.length} items`
+          ? `Nuevo pedido para Mesa ${order.mesa} - ${order.items.length} items`
+          : `Nuevo pedido de ${order.mesa || 'Caja'} - ${order.items.length} items`
       })
     } catch (e) {
       console.error('No se pudo notificar al bartender:', e)
     }
 
-    // Si hay mesero asignado (pedido de caja a mesa), notificar al mesero
     if (order.meseroAsignadoId && order.meseroAsignadoId !== order.mesero_id) {
       try {
         await notificationService.notificarMesero({
           meseroId: order.meseroAsignadoId,
           pedidoId: data.id,
           tipo: 'pedido_asignado',
-          mensaje: `📋 Nuevo pedido asignado: Mesa ${order.mesa} - ${order.items.length} items`
+          mensaje: `Nuevo pedido asignado: Mesa ${order.mesa} - ${order.items.length} items`
         })
       } catch (e) {
         console.error('No se pudo notificar al mesero:', e)
       }
     }
 
-    return data as Order
-  },
-
-  async createOrderConJornada(order: {
-    mesero_id: string
-    mesa?: string
-    items: OrderItem[]
-    total: number
-    notas?: string
-  }): Promise<Order> {
-    const supabase = createClient()
-    
-    if (!order.mesero_id) throw new Error('Se requiere un usuario para crear el pedido')
-    if (!order.items || order.items.length === 0) throw new Error('El pedido debe tener al menos un producto')
-    if (order.total <= 0) throw new Error('El total del pedido debe ser mayor a 0')
-
-    const { data, error } = await supabase.rpc('crear_pedido_con_jornada', {
-      p_mesero_id: order.mesero_id,
-      p_mesa: order.mesa || 'Caja',
-      p_items: order.items,
-      p_total: order.total
-    })
-
-    if (error) {
-      console.error('Error al crear pedido con jornada:', error)
-      throw new Error(error.message || 'No se pudo crear el pedido')
-    }
-
-    const result = data as CrearPedidoResult
-
-    try {
-      if (result.sin_bartender) {
-        await notificationService.notificarAdmin({
-          usuarioId: order.mesero_id,
-          pedidoId: result.pedido_id,
-          tipo: 'pedido_sin_bartender',
-          mensaje: `⚠️ Pedido de ${order.mesa || 'Caja'} sin bartender disponible. Asignar manualmente.`
-        })
-      } else {
-        await notificationService.notificarBartender({
-          bartenderId: result.bartender_asignado_id || undefined,
-          pedidoId: result.pedido_id,
-          tipo: 'nuevo_pedido',
-          mensaje: `📦 Nuevo pedido de ${order.mesa || 'Caja'} - ${order.items.length} items`
-        })
-      }
-    } catch (e) {
-      console.error('No se pudo notificar:', e)
-    }
-
-    const pedidoCompleto = await this.getOrderById(result.pedido_id)
-    if (!pedidoCompleto) throw new Error('Pedido creado pero no se pudo recuperar')
-
-    return pedidoCompleto
-  },
-
-  async assignBartenderAutomatico(orderId: string): Promise<Order> {
-    const supabase = createClient()
-
-    const { data: bartenderId, error: rpcError } = await supabase.rpc('asignar_siguiente_bartender')
-
-    if (rpcError) {
-      console.error('Error al asignar bartender:', rpcError)
-      throw new Error('No se pudo asignar bartender automáticamente')
-    }
-
-    if (!bartenderId) {
-      throw new Error('No hay bartenders disponibles en este momento')
-    }
-
-    const { data, error } = await supabase
-      .from('pedidos')
-      .update({
-        bartender_id: bartenderId,
-        estado: 'preparando',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .maybeSingle()
-
-    if (error) throw new Error('No se pudo asignar el bartender al pedido')
-
-    if (data) {
+    if (order.ayudadoPorId && order.ayudadoPorId !== meseroFinalId) {
       try {
-        await notificationService.notificarMesero({
-          meseroId: data.mesero_id,
-          pedidoId: data.id,
-          tipo: 'pedido_en_preparacion',
-          mensaje: `👨‍🍳 Tu pedido de ${data.mesa || 'Caja'} está en preparación`
-        })
+        const { data: ayudante } = await supabase
+          .from('usuarios')
+          .select('nombre, apellido')
+          .eq('id', order.ayudadoPorId)
+          .maybeSingle()
+
+        const nombreAyudante = ayudante
+          ? `${ayudante.nombre || ''} ${ayudante.apellido || ''}`.trim()
+          : 'Un companero'
+
+        await supabase.from('notificaciones_mesero').insert([
+          {
+            mesero_id: meseroFinalId,
+            pedido_id: data.id,
+            tipo: 'ayuda_mesero',
+            mensaje: `${nombreAyudante} te ayudo en Mesa ${order.mesa} con ${order.items.length} items`,
+            jornada_id: jornadaId
+          }
+        ])
       } catch (e) {
-        console.error('No se pudo notificar al mesero:', e)
+        console.error('No se pudo notificar ayuda al mesero:', e)
       }
     }
 
     return data as Order
   },
 
-  async updateOrder(id: string, updates: Partial<Order>): Promise<Order> {
+  async updateOrder(
+    id: string,
+    updates: Partial<Order>
+  ): Promise<Order> {
     const supabase = createClient()
-    
     const { data, error } = await supabase
       .from('pedidos')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .maybeSingle()
-    
+
     if (error) throw new Error('No se pudo actualizar el pedido')
-    if (!data) throw new Error('No se pudo actualizar el pedido')
-    
     return data as Order
   },
 
-  async assignBartender(orderId: string, bartenderId: string): Promise<Order> {
+  async markServed(id: string): Promise<void> {
     const supabase = createClient()
-    
-    const { data, error } = await supabase
-      .from('pedidos')
-      .update({ 
-        bartender_id: bartenderId, 
-        estado: 'preparando',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId)
-      .select()
-      .maybeSingle()
-
-    if (error) throw new Error('No se pudo asignar el bartender')
-
-    if (data) {
-      try {
-        await notificationService.notificarMesero({
-          meseroId: data.mesero_id,
-          pedidoId: data.id,
-          tipo: 'pedido_en_preparacion',
-          mensaje: `👨‍🍳 Tu pedido de ${data.mesa || 'Caja'} está en preparación`
-        })
-      } catch (e) {
-        console.error('No se pudo notificar al mesero:', e)
-      }
-    }
-
-    return data as Order
-  },
-
-  async markReady(orderId: string): Promise<Order> {
-    const supabase = createClient()
-    
-    const { data, error } = await supabase
-      .from('pedidos')
-      .update({ estado: 'listo', updated_at: new Date().toISOString() })
-      .eq('id', orderId)
-      .select()
-      .maybeSingle()
-
-    if (error) throw new Error('No se pudo marcar como listo')
-
-    if (data) {
-      try {
-        await notificationService.notificarMesero({
-          meseroId: data.mesero_id,
-          pedidoId: data.id,
-          tipo: 'pedido_listo',
-          mensaje: `✅ ¡Pedido de ${data.mesa || 'Caja'} LISTO! Pasa a recogerlo`
-        })
-
-        await notificationService.notificarCaja({
-          pedidoId: data.id,
-          tipo: 'pedido_listo',
-          mensaje: `✅ Pedido de ${data.mesa || 'Caja'} listo para cobrar`
-        })
-      } catch (e) {
-        console.error('No se pudo notificar:', e)
-      }
-    }
-
-    return data as Order
-  },
-
-  async markServed(orderId: string): Promise<Order> {
-    const supabase = createClient()
-    
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('pedidos')
       .update({ estado: 'servido', updated_at: new Date().toISOString() })
-      .eq('id', orderId)
-      .select()
-      .maybeSingle()
-
+      .eq('id', id)
     if (error) throw new Error('No se pudo marcar como servido')
-
-    if (data) {
-      try {
-        const { data: userData } = await supabase.auth.getUser()
-        const usuarioId = userData?.user?.id || data.mesero_id
-
-        const { data: descuentoData, error: descuentoError } = await supabase.rpc(
-          'procesar_venta_con_descuento',
-          {
-            p_pedido_id: orderId,
-            p_usuario_id: usuarioId
-          }
-        )
-
-        if (descuentoError) {
-          console.error('Error al descontar stock:', descuentoError)
-        } else if (descuentoData) {
-          const agotados = descuentoData.productos_agotados || []
-          const bajos = descuentoData.productos_bajos || []
-          for (const producto of agotados) {
-            await notificationService.notificarStockBajo({ nombre: producto }, 0)
-          }
-          for (const producto of bajos) {
-            await notificationService.notificarStockBajo({ nombre: producto }, 1)
-          }
-        }
-
-        // 🆕 Notificar al mesero que su pedido fue cobrado
-        if (data.mesero_id) {
-          try {
-            await notificationService.notificarMesero({
-              meseroId: data.mesero_id,
-              pedidoId: data.id,
-              tipo: 'pedido_cobrado',
-              mensaje: `💰 Pedido de ${data.mesa || 'Caja'} cobrado: $${(data.total || 0).toFixed(2)}`
-            })
-          } catch (e) {
-            console.error('No se pudo notificar al mesero del cobro:', e)
-          }
-        }
-
-        // 🆕 Notificar al bartender si lo hubo
-        if (data.bartender_id) {
-          try {
-            await notificationService.notificarBartender({
-              bartenderId: data.bartender_id,
-              pedidoId: data.id,
-              tipo: 'pedido_cobrado',
-              mensaje: `💰 Pedido de ${data.mesa || 'Caja'} cobrado`
-            })
-          } catch (e) {
-            console.error('No se pudo notificar al bartender del cobro:', e)
-          }
-        }
-      } catch (e) {
-        console.error('Error al procesar descuento:', e)
-      }
-    }
-
-    return data as Order
   },
 
-  async cancelOrder(
-    orderId: string, 
-    motivo: string, 
-    canceladoPor: string
-  ): Promise<Order> {
+  /**
+   * Asigna un bartender a un pedido pendiente (usado por NotificationBell)
+   */
+  async assignBartender(
+    pedidoId: string,
+    bartenderId: string | null
+  ): Promise<void> {
     const supabase = createClient()
-    
-    if (!motivo || motivo.trim().length < 5) {
-      throw new Error('El motivo de cancelación debe tener al menos 5 caracteres')
+    const { error } = await supabase
+      .from('pedidos')
+      .update({
+        bartender_id: bartenderId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', pedidoId)
+    if (error) throw new Error('No se pudo asignar el bartender')
+  },
+
+  canCancelOrder(pedido: Order): { can: boolean; reason?: string } {
+    if (pedido.estado === 'servido') {
+      return { can: false, reason: 'El pedido ya fue servido' }
     }
-
-    const pedidoActual = await this.getOrderById(orderId)
-    if (!pedidoActual) throw new Error('El pedido no fue encontrado')
-    if (pedidoActual.estado === 'cancelado') throw new Error('Este pedido ya fue cancelado')
-    if (pedidoActual.estado === 'servido') throw new Error('Este pedido ya fue cobrado')
-
-    // Restaurar stock si estaba listo
-    if (pedidoActual.estado === 'listo') {
-      try {
-        await supabase.rpc('restaurar_stock_cancelacion', {
-          p_pedido_id: orderId,
-          p_usuario_id: canceladoPor
-        })
-      } catch (e) {
-        console.error('Error al restaurar stock:', e)
-      }
+    if (pedido.estado === 'cancelado') {
+      return { can: false, reason: 'El pedido ya esta cancelado' }
     }
+    return { can: true }
+  },
 
-    // Actualizar pedido CON los campos de auditoría
+  async cancelOrder(id: string, motivo: string, usuarioId: string): Promise<void> {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('pedidos')
+      .update({
+        estado: 'cancelado',
+        motivo_cancelacion: motivo,
+        cancelado_por: usuarioId,
+        cancelado_en: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+    if (error) throw new Error('No se pudo cancelar el pedido')
+  },
+
+  /**
+   * Devuelve todas las ayudas registradas en una jornada.
+   * Util para el reporte final.
+   */
+  async getAyudasDeJornada(jornadaId: string): Promise<
+    Array<{
+      pedido_id: string
+      mesa: string
+      total: number
+      items_count: number
+      ayudante: { usuario_id: string; nombre: string; apellido: string }
+      titular: { usuario_id: string; nombre: string; apellido: string }
+      created_at: string
+    }>
+  > {
+    const supabase = createClient()
+
     const { data, error } = await supabase
       .from('pedidos')
-      .update({ 
-        estado: 'cancelado', 
-        cancelado_por: canceladoPor,
-        motivo_cancelacion: motivo.trim(),
-        updated_at: new Date().toISOString() 
-      })
-      .eq('id', orderId)
-      .select()
-      .maybeSingle()
+      .select(`
+        id,
+        mesa,
+        total,
+        items,
+        created_at,
+        ayudado_por_id,
+        mesero_id,
+        ayudante:usuarios!ayudado_por_id(id, nombre, apellido),
+        titular:usuarios!mesero_id(id, nombre, apellido)
+      `)
+      .eq('jornada_id', jornadaId)
+      .not('ayudado_por_id', 'is', null)
+      .order('created_at', { ascending: true })
 
-    if (error) throw new Error('No se pudo cancelar el pedido')
-
-    // Registrar en auditoría
-    try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
-      const { data: jornada } = await supabase
-        .from('jornadas')
-        .select('id')
-        .eq('estado', 'activa')
-        .maybeSingle()
-
-      await supabase.rpc('registrar_auditoria', {
-        p_tipo_evento: 'cancelacion_pedido',
-        p_entidad_id: orderId,
-        p_entidad_tipo: 'pedido',
-        p_motivo: motivo.trim(),
-        p_descripcion: `Cancelación de pedido - Mesa ${pedidoActual.mesa || 'N/A'} - Total: $${(pedidoActual.total || 0).toFixed(2)}`,
-        p_datos_anteriores: {
-          estado: pedidoActual.estado,
-          mesa: pedidoActual.mesa,
-          total: pedidoActual.total,
-          items: pedidoActual.items
-        },
-        p_datos_nuevos: {
-          estado: 'cancelado',
-          motivo: motivo.trim(),
-          cancelado_por: canceladoPor
-        },
-        p_jornada_id: jornada?.id || null
-      })
-    } catch (e) {
-      console.error('No se pudo registrar en auditoría:', e)
+    if (error) {
+      console.error('Error al cargar ayudas:', error)
+      return []
     }
 
-    // Notificar al admin
-    try {
-      await notificationService.notificarAdmin({
-        pedidoId: orderId,
-        usuarioId: canceladoPor,
-        tipo: 'pedido_cancelado',
-        mensaje: `Pedido cancelado - Mesa ${pedidoActual.mesa || 'N/A'} - Total: $${(pedidoActual.total || 0).toFixed(2)}`,
-        motivo: motivo.trim()
-      })
-    } catch (e) {
-      console.error('No se pudo notificar al admin:', e)
-    }
-
-    // Notificar al mesero asignado
-    if (pedidoActual.mesero_id && pedidoActual.mesero_id !== canceladoPor) {
-      try {
-        await notificationService.notificarMesero({
-          meseroId: pedidoActual.mesero_id,
-          pedidoId: orderId,
-          tipo: 'pedido_cancelado',
-          mensaje: `Pedido de ${pedidoActual.mesa || 'Caja'} cancelado`,
-          motivo: motivo.trim()
-        })
-      } catch (e) {
-        console.error('No se pudo notificar al mesero:', e)
-      }
-    }
-
-    // Notificar al bartender asignado
-    if (pedidoActual.bartender_id) {
-      try {
-        await notificationService.notificarBartender({
-          bartenderId: pedidoActual.bartender_id,
-          pedidoId: orderId,
-          tipo: 'pedido_cancelado',
-          mensaje: `Pedido de ${pedidoActual.mesa || 'Caja'} cancelado`
-        })
-      } catch (e) {
-        console.error('No se pudo notificar al bartender:', e)
-      }
-    }
-
-    return data as Order
-  },
-
-  canCancelOrder(order: Order): { can: boolean; reason?: string } {
-    if (order.estado === 'cancelado') return { can: false, reason: 'Este pedido ya está cancelado' }
-    if (order.estado === 'servido') return { can: false, reason: 'Este pedido ya fue cobrado' }
-    return { can: true }
+    return (data || []).map((p: any) => ({
+      pedido_id: p.id,
+      mesa: p.mesa || 'N/A',
+      total: Number(p.total) || 0,
+      items_count: Array.isArray(p.items) ? p.items.length : 0,
+      ayudante: {
+        usuario_id: p.ayudado_por_id,
+        nombre: p.ayudante?.nombre || '',
+        apellido: p.ayudante?.apellido || ''
+      },
+      titular: {
+        usuario_id: p.mesero_id,
+        nombre: p.titular?.nombre || '',
+        apellido: p.titular?.apellido || ''
+      },
+      created_at: p.created_at
+    }))
   },
 
   async getRendimientoProducto(productoId: string): Promise<any> {
     const supabase = createClient()
-    const { data, error } = await supabase.rpc('calcular_rendimiento_producto', {
-      p_producto_id: productoId
-    })
-    if (error) {
-      console.error('Error:', error)
-      return null
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select('items, total, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500)
+
+    if (error) return null
+
+    let totalVendido = 0
+    let cantidadVendida = 0
+
+    for (const pedido of data || []) {
+      const items = Array.isArray(pedido.items) ? pedido.items : []
+      for (const item of items) {
+        if (item.receta_id === productoId) {
+          cantidadVendida += Number(item.cantidad) || 0
+          totalVendido += (Number(item.precio) || 0) * (Number(item.cantidad) || 0)
+        }
+      }
     }
-    return data
+
+    return { totalVendido, cantidadVendida }
   },
 
   async getNotificacionesAdmin(): Promise<any[]> {
     const supabase = createClient()
-    try {
-      const { data, error } = await supabase
-        .from('notificaciones_admin')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      if (error) {
-        console.warn('⚠️ Tabla notificaciones_admin no disponible:', error.message)
-        return []
-      }
-      return data || []
-    } catch (e) {
-      console.warn('⚠️ Error al cargar notificaciones admin:', e)
-      return []
-    }
-  },
-
-  async marcarNotificacionAdminLeida(id: string): Promise<void> {
-    const supabase = createClient()
-    await supabase
+    const { data, error } = await supabase
       .from('notificaciones_admin')
-      .update({ leida: true })
-      .eq('id', id)
-  },
-
-  async marcarTodasNotificacionesAdminLeidas(): Promise<void> {
-    const supabase = createClient()
-    await supabase
-      .from('notificaciones_admin')
-      .update({ leida: true })
+      .select('*')
       .eq('leida', false)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (error) return []
+    return data || []
   }
 }
