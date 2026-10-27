@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { 
-  Search, Users, ArrowLeft, RefreshCw, User, 
+import {
+  Search, Users, ArrowLeft, RefreshCw, User,
   CheckCircle, XCircle, Plus,
   Edit, Trash2, Camera, Mail, Phone,
-  Shield, ShieldCheck, ShieldAlert, Eye, EyeOff,
-  Loader2
+  Shield, ShieldCheck,
+  Loader2, Palette
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -32,10 +32,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
 import { userService } from '@/lib/services/userService'
 import { useToast } from '@/hooks/use-toast'
+import { GestionColoresUsuarios } from '@/components/admin/GestionColoresUsuarios'
 
 export default function UsersManagementPage() {
   const { user } = useAuth()
@@ -51,6 +53,7 @@ export default function UsersManagementPage() {
   const [userToDelete, setUserToDelete] = useState<any>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [tabActivo, setTabActivo] = useState('admins')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -125,7 +128,7 @@ export default function UsersManagementPage() {
     if (formData.password !== formData.confirmPassword) {
       toast({
         title: 'Error',
-        description: 'Las contraseñas no coinciden',
+        description: 'Las contrasenas no coinciden',
         variant: 'destructive'
       })
       setActionLoading(null)
@@ -135,7 +138,7 @@ export default function UsersManagementPage() {
     if (formData.password.length < 6) {
       toast({
         title: 'Error',
-        description: 'La contraseña debe tener al menos 6 caracteres',
+        description: 'La contrasena debe tener al menos 6 caracteres',
         variant: 'destructive'
       })
       setActionLoading(null)
@@ -143,7 +146,6 @@ export default function UsersManagementPage() {
     }
 
     try {
-      // Crear usuario en Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -161,7 +163,6 @@ export default function UsersManagementPage() {
 
       const userId = authData.user.id
 
-      // Crear en tabla usuarios
       const { error: userError } = await supabase
         .from('usuarios')
         .insert([{
@@ -181,13 +182,12 @@ export default function UsersManagementPage() {
 
       if (userError) throw userError
 
-      // Subir avatar si se seleccionó
       if (avatarFile) {
         try {
           const extension = avatarFile.name.split('.').pop()
           const fileName = `${Date.now()}.${extension}`
           const path = `admins/${userId}/${fileName}`
-          
+
           const { error: uploadError } = await supabase.storage
             .from('barranco-images')
             .upload(path, avatarFile, {
@@ -195,12 +195,12 @@ export default function UsersManagementPage() {
               upsert: true,
               contentType: avatarFile.type
             })
-          
+
           if (!uploadError) {
             const { data: urlData } = supabase.storage
               .from('barranco-images')
               .getPublicUrl(path)
-            
+
             await supabase
               .from('usuarios')
               .update({ avatar_url: urlData.publicUrl })
@@ -212,12 +212,11 @@ export default function UsersManagementPage() {
       }
 
       toast({
-        title: '✅ Administrador creado',
+        title: 'Administrador creado',
         description: `${formData.nombre} ${formData.apellido} ha sido creado correctamente`,
         variant: 'success'
       })
 
-      // Resetear formulario
       setFormData({
         nombre: '',
         apellido: '',
@@ -249,20 +248,18 @@ export default function UsersManagementPage() {
 
     setActionLoading('edit')
     try {
-      // Actualizar usuario
       await userService.updateUser(selectedUser.id, {
         nombre: editFormData.nombre,
         apellido: editFormData.apellido,
         phone_number: editFormData.telefono,
       })
 
-      // Subir nueva foto si se seleccionó
       if (editAvatarFile) {
         try {
           const extension = editAvatarFile.name.split('.').pop()
           const fileName = `${Date.now()}.${extension}`
           const path = `admins/${selectedUser.id}/${fileName}`
-          
+
           const { error: uploadError } = await supabase.storage
             .from('barranco-images')
             .upload(path, editAvatarFile, {
@@ -270,12 +267,12 @@ export default function UsersManagementPage() {
               upsert: true,
               contentType: editAvatarFile.type
             })
-          
+
           if (!uploadError) {
             const { data: urlData } = supabase.storage
               .from('barranco-images')
               .getPublicUrl(path)
-            
+
             await supabase
               .from('usuarios')
               .update({ avatar_url: urlData.publicUrl })
@@ -287,7 +284,7 @@ export default function UsersManagementPage() {
       }
 
       toast({
-        title: '✅ Administrador actualizado',
+        title: 'Administrador actualizado',
         description: `${editFormData.nombre} ${editFormData.apellido} ha sido actualizado`,
         variant: 'success'
       })
@@ -319,7 +316,7 @@ export default function UsersManagementPage() {
       setIsDeleteDialogOpen(false)
       setUserToDelete(null)
       toast({
-        title: '✅ Administrador eliminado',
+        title: 'Administrador eliminado',
         description: `${userToDelete.nombre} ${userToDelete.apellido} ha sido eliminado`,
         variant: 'success'
       })
@@ -340,7 +337,7 @@ export default function UsersManagementPage() {
       await userService.desactivarUsuario(id)
       await fetchUsers()
       toast({
-        title: '✅ Usuario desactivado',
+        title: 'Usuario desactivado',
         description: 'El administrador ha sido desactivado',
         variant: 'success'
       })
@@ -361,7 +358,7 @@ export default function UsersManagementPage() {
       await userService.activarUsuario(id)
       await fetchUsers()
       toast({
-        title: '✅ Usuario activado',
+        title: 'Usuario activado',
         description: 'El administrador ha sido activado',
         variant: 'success'
       })
@@ -415,317 +412,339 @@ export default function UsersManagementPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <Link href="/admin">
-              <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Volver
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Shield className="h-6 w-6 text-blue-600" />
-                Administradores
-              </h1>
-              <p className="text-sm text-gray-500">Gestiona los administradores del sistema</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nuevo Administrador
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <ShieldCheck className="h-5 w-5 text-blue-600" />
-                    Crear Nuevo Administrador
-                  </DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleCreateUser} className="space-y-4">
-                  {/* Foto de perfil */}
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="relative group">
-                      <Avatar className="h-24 w-24 border-4 border-blue-100">
-                        {avatarPreview ? (
-                          <AvatarImage src={avatarPreview} alt="Preview" />
-                        ) : null}
-                        <AvatarFallback className="text-3xl bg-blue-600 text-white">
-                          {formData.nombre && formData.apellido 
-                            ? getInitials(formData.nombre, formData.apellido)
-                            : <User className="h-10 w-10" />}
-                        </AvatarFallback>
-                      </Avatar>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleImageChange(e, false)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="absolute -bottom-1 -right-1 p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-lg"
-                      >
-                        <Camera className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500">Haz clic en la cámara para agregar foto</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="nombre">Nombre</Label>
-                      <Input
-                        id="nombre"
-                        value={formData.nombre}
-                        onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="apellido">Apellido</Label>
-                      <Input
-                        id="apellido"
-                        value={formData.apellido}
-                        onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="telefono">Teléfono</Label>
-                    <Input
-                      id="telefono"
-                      value={formData.telefono}
-                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                      placeholder="+52 123 456 7890"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Contraseña</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        required
-                        minLength={6}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
-                      <Input
-                        id="confirmPassword"
-                        type="password"
-                        value={formData.confirmPassword}
-                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setIsDialogOpen(false)
-                        setFormData({
-                          nombre: '',
-                          apellido: '',
-                          email: '',
-                          telefono: '',
-                          password: '',
-                          confirmPassword: '',
-                        })
-                        setAvatarFile(null)
-                        setAvatarPreview(null)
-                      }}
-                      className="flex-1"
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      type="submit"
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                      disabled={actionLoading === 'create'}
-                    >
-                      {actionLoading === 'create' ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Creando...
-                        </>
-                      ) : (
-                        'Crear Administrador'
-                      )}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-            <Button variant="outline" onClick={fetchUsers}>
-              <RefreshCw className="h-4 w-4" />
+        {/* Header comun */}
+        <div className="flex items-center gap-3 mb-6">
+          <Link href="/admin">
+            <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Volver
             </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <Users className="h-6 w-6 text-blue-600" />
+              Gestion de Usuarios
+            </h1>
+            <p className="text-sm text-gray-500">
+              Administra administradores y colores del mapa de mesas
+            </p>
           </div>
         </div>
 
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Buscar administradores..."
-            className="pl-9"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+        <Tabs value={tabActivo} onValueChange={setTabActivo} className="w-full">
+          <TabsList className="mb-6">
+            <TabsTrigger value="admins" className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Administradores
+            </TabsTrigger>
+            <TabsTrigger value="colores" className="flex items-center gap-2">
+              <Palette className="h-4 w-4" />
+              Colores del mapa
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredUsers.map((usuario, index) => {
-            const isActivo = usuario.activo
-            const isCurrentUser = usuario.id === user?.id
-
-            return (
-              <Card key={usuario.id} className={`hover:shadow-lg transition-all duration-300 border-t-4 ${
-                isActivo ? 'border-t-green-500' : 'border-t-red-500'
-              }`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <Avatar className={`h-16 w-16 ${getColor(index)}`}>
-                      {usuario.avatar_url ? (
-                        <AvatarImage src={usuario.avatar_url} alt={usuario.nombre} />
-                      ) : null}
-                      <AvatarFallback className="text-white text-lg font-semibold">
-                        {getInitials(usuario.nombre, usuario.apellido)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-gray-900 truncate">
-                          {usuario.nombre} {usuario.apellido}
-                        </h3>
-                        <Badge className={isActivo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                          {isActivo ? 'Activo' : 'Inactivo'}
-                        </Badge>
+          {/* TAB ADMINISTRADORES */}
+          <TabsContent value="admins" className="space-y-6">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nuevo Administrador
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <ShieldCheck className="h-5 w-5 text-blue-600" />
+                      Crear Nuevo Administrador
+                    </DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCreateUser} className="space-y-4">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="relative group">
+                        <Avatar className="h-24 w-24 border-4 border-blue-100">
+                          {avatarPreview ? (
+                            <AvatarImage src={avatarPreview} alt="Preview" />
+                          ) : null}
+                          <AvatarFallback className="text-3xl bg-blue-600 text-white">
+                            {formData.nombre && formData.apellido
+                              ? getInitials(formData.nombre, formData.apellido)
+                              : <User className="h-10 w-10" />}
+                          </AvatarFallback>
+                        </Avatar>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageChange(e, false)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="absolute -bottom-1 -right-1 p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-lg"
+                        >
+                          <Camera className="h-4 w-4" />
+                        </button>
                       </div>
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        {usuario.email}
-                      </p>
-                      {usuario.phone_number && (
-                        <p className="text-xs text-gray-400 flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {usuario.phone_number}
-                        </p>
-                      )}
-                      {isCurrentUser && (
-                        <Badge className="mt-1 bg-blue-100 text-blue-700 text-xs">
-                          <Shield className="h-3 w-3 mr-1" />
-                          Tú
-                        </Badge>
-                      )}
+                      <p className="text-xs text-gray-500">Haz clic en la camara para agregar foto</p>
                     </div>
-                  </div>
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
-                    <Badge className="bg-purple-100 text-purple-700">
-                      <Shield className="h-3 w-3 mr-1" />
-                      Administrador
-                    </Badge>
-                    <div className="flex flex-wrap gap-1">
-                      <Button 
-                        size="sm" 
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="nombre">Nombre</Label>
+                        <Input
+                          id="nombre"
+                          value={formData.nombre}
+                          onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="apellido">Apellido</Label>
+                        <Input
+                          id="apellido"
+                          value={formData.apellido}
+                          onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="telefono">Telefono</Label>
+                      <Input
+                        id="telefono"
+                        value={formData.telefono}
+                        onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                        placeholder="+52 123 456 7890"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="password">Contrasena</Label>
+                        <Input
+                          id="password"
+                          type="password"
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          required
+                          minLength={6}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="confirmPassword">Confirmar Contrasena</Label>
+                        <Input
+                          id="confirmPassword"
+                          type="password"
+                          value={formData.confirmPassword}
+                          onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <Button
+                        type="button"
                         variant="outline"
-                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                        onClick={() => openEditDialog(usuario)}
+                        onClick={() => {
+                          setIsDialogOpen(false)
+                          setFormData({
+                            nombre: '',
+                            apellido: '',
+                            email: '',
+                            telefono: '',
+                            password: '',
+                            confirmPassword: '',
+                          })
+                          setAvatarFile(null)
+                          setAvatarPreview(null)
+                        }}
+                        className="flex-1"
                       >
-                        <Edit className="h-3 w-3 mr-1" />
-                        Editar
+                        Cancelar
                       </Button>
-                      {!isCurrentUser && (
-                        <>
-                          {isActivo ? (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="text-red-600 border-red-200 hover:bg-red-50"
-                              onClick={() => handleDesactivar(usuario.id)}
-                              disabled={actionLoading === usuario.id}
-                            >
-                              {actionLoading === usuario.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <XCircle className="h-3 w-3" />
-                              )}
-                            </Button>
-                          ) : (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="text-green-600 border-green-200 hover:bg-green-50"
-                              onClick={() => handleActivar(usuario.id)}
-                              disabled={actionLoading === usuario.id}
-                            >
-                              {actionLoading === usuario.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <CheckCircle className="h-3 w-3" />
-                              )}
-                            </Button>
-                          )}
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => {
-                              setUserToDelete(usuario)
-                              setIsDeleteDialogOpen(true)
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
+                      <Button
+                        type="submit"
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={actionLoading === 'create'}
+                      >
+                        {actionLoading === 'create' ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Creando...
+                          </>
+                        ) : (
+                          'Crear Administrador'
+                        )}
+                      </Button>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+              <Button variant="outline" onClick={fetchUsers}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
 
-        {filteredUsers.length === 0 && (
-          <div className="text-center py-12">
-            <Shield className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-500">No se encontraron administradores</p>
-            <Button 
-              className="mt-4 bg-blue-600 hover:bg-blue-700"
-              onClick={() => setIsDialogOpen(true)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Crear primer administrador
-            </Button>
-          </div>
-        )}
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar administradores..."
+                className="pl-9"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredUsers.map((usuario, index) => {
+                const isActivo = usuario.activo
+                const isCurrentUser = usuario.id === user?.id
+
+                return (
+                  <Card key={usuario.id} className={`hover:shadow-lg transition-all duration-300 border-t-4 ${
+                    isActivo ? 'border-t-green-500' : 'border-t-red-500'
+                  }`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <Avatar className={`h-16 w-16 ${getColor(index)}`}>
+                          {usuario.avatar_url ? (
+                            <AvatarImage src={usuario.avatar_url} alt={usuario.nombre} />
+                          ) : null}
+                          <AvatarFallback className="text-white text-lg font-semibold">
+                            {getInitials(usuario.nombre, usuario.apellido)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-gray-900 truncate">
+                              {usuario.nombre} {usuario.apellido}
+                            </h3>
+                            <Badge className={isActivo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                              {isActivo ? 'Activo' : 'Inactivo'}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-500 flex items-center gap-1">
+                            <Mail className="h-3 w-3" />
+                            {usuario.email}
+                          </p>
+                          {usuario.phone_number && (
+                            <p className="text-xs text-gray-400 flex items-center gap-1">
+                              <Phone className="h-3 w-3" />
+                              {usuario.phone_number}
+                            </p>
+                          )}
+                          {isCurrentUser && (
+                            <Badge className="mt-1 bg-blue-100 text-blue-700 text-xs">
+                              <Shield className="h-3 w-3 mr-1" />
+                              Tu
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
+                        <Badge className="bg-purple-100 text-purple-700">
+                          <Shield className="h-3 w-3 mr-1" />
+                          Administrador
+                        </Badge>
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                            onClick={() => openEditDialog(usuario)}
+                          >
+                            <Edit className="h-3 w-3 mr-1" />
+                            Editar
+                          </Button>
+                          {!isCurrentUser && (
+                            <>
+                              {isActivo ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600 border-red-200 hover:bg-red-50"
+                                  onClick={() => handleDesactivar(usuario.id)}
+                                  disabled={actionLoading === usuario.id}
+                                >
+                                  {actionLoading === usuario.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <XCircle className="h-3 w-3" />
+                                  )}
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-green-600 border-green-200 hover:bg-green-50"
+                                  onClick={() => handleActivar(usuario.id)}
+                                  disabled={actionLoading === usuario.id}
+                                >
+                                  {actionLoading === usuario.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <CheckCircle className="h-3 w-3" />
+                                  )}
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-200 hover:bg-red-50"
+                                onClick={() => {
+                                  setUserToDelete(usuario)
+                                  setIsDeleteDialogOpen(true)
+                                }}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+
+            {filteredUsers.length === 0 && (
+              <div className="text-center py-12">
+                <Shield className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500">No se encontraron administradores</p>
+                <Button
+                  className="mt-4 bg-blue-600 hover:bg-blue-700"
+                  onClick={() => setIsDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear primer administrador
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* TAB COLORES DEL MAPA */}
+          <TabsContent value="colores">
+            <GestionColoresUsuarios />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Dialog para editar */}
@@ -745,7 +764,7 @@ export default function UsersManagementPage() {
                     <AvatarImage src={editAvatarPreview} alt="Preview" />
                   ) : null}
                   <AvatarFallback className="text-3xl bg-blue-600 text-white">
-                    {editFormData.nombre && editFormData.apellido 
+                    {editFormData.nombre && editFormData.apellido
                       ? getInitials(editFormData.nombre, editFormData.apellido)
                       : <User className="h-10 w-10" />}
                   </AvatarFallback>
@@ -765,7 +784,7 @@ export default function UsersManagementPage() {
                   <Camera className="h-4 w-4" />
                 </button>
               </div>
-              <p className="text-xs text-gray-500">Haz clic en la cámara para cambiar foto</p>
+              <p className="text-xs text-gray-500">Haz clic en la camara para cambiar foto</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -802,7 +821,7 @@ export default function UsersManagementPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-telefono">Teléfono</Label>
+              <Label htmlFor="edit-telefono">Telefono</Label>
               <Input
                 id="edit-telefono"
                 value={editFormData.telefono}
@@ -844,20 +863,20 @@ export default function UsersManagementPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog para confirmar eliminación */}
+      {/* Dialog para confirmar eliminacion */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogTitle>Estas seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción eliminará al administrador <strong>{userToDelete?.nombre} {userToDelete?.apellido}</strong>.
-              Esta acción no se puede deshacer.
+              Esta accion eliminara al administrador <strong>{userToDelete?.nombre} {userToDelete?.apellido}</strong>.
+              Esta accion no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteUser} 
+            <AlertDialogAction
+              onClick={handleDeleteUser}
               className="bg-red-600 hover:bg-red-700"
               disabled={actionLoading === 'delete'}
             >
