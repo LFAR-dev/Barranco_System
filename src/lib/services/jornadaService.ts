@@ -46,6 +46,48 @@ export const jornadaService = {
   /**
    * Obtiene la jornada activa actual (o null si no hay)
    */
+    /**
+   * Obtiene las cuentas pendientes de cobro en una jornada.
+   * Se usa para bloquear el cierre si hay cuentas abiertas.
+   */
+  async getCuentasPendientesCierre(jornadaId: string): Promise<Array<{
+    id: string
+    mesa: string
+    total: number
+    mesero: string
+    estado: string
+    abierta_en: string
+  }>> {
+    const supabase = createClient()
+    
+    const { data, error } = await supabase
+      .from('cuentas_abiertas')
+      .select(`
+        id,
+        total_actual,
+        estado,
+        abierta_en,
+        mesa:mesas!mesa_id(numero),
+        mesero:usuarios!mesero_id(nombre, apellido)
+      `)
+      .eq('jornada_id', jornadaId)
+      .in('estado', ['abierta', 'cuenta_solicitada', 'cobrando'])
+      .order('abierta_en', { ascending: true })
+
+    if (error) {
+      console.error('Error al obtener cuentas pendientes:', error)
+      return []
+    }
+
+    return (data || []).map((c: any) => ({
+      id: c.id,
+      mesa: c.mesa?.numero || 'N/A',
+      total: Number(c.total_actual) || 0,
+      mesero: c.mesero ? `${c.mesero.nombre} ${c.mesero.apellido}` : 'N/A',
+      estado: c.estado,
+      abierta_en: c.abierta_en
+    }))
+  },
   async getJornadaActual(): Promise<Jornada | null> {
     const supabase = createClient()
     const { data, error } = await supabase
