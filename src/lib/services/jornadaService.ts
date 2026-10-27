@@ -50,6 +50,62 @@ export const jornadaService = {
    * Obtiene las cuentas pendientes de cobro en una jornada.
    * Se usa para bloquear el cierre si hay cuentas abiertas.
    */
+    /**
+   * Abre una jornada y genera NIPs para todos los trabajadores en una sola transaccion atomica.
+   * Si algo falla, no se abre la jornada (rollback).
+   */
+  async abrirJornadaCompleta(
+    nombre: string,
+    notas: string | undefined,
+    meseros: string[],
+    bartenders: string[],
+    cajeros: string[]
+  ): Promise<{
+    success: boolean
+    jornada_id: string
+    nombre: string
+    trabajadores: Array<{
+      usuario_id: string
+      nombre: string
+      apellido: string
+      rol: string
+      nip: string
+    }>
+  }> {
+    const supabase = createClient()
+    
+    const { data, error } = await supabase.rpc('abrir_jornada_completa', {
+      p_nombre: nombre,
+      p_notas: notas || null,
+      p_meseros: meseros.length > 0 ? meseros : null,
+      p_bartenders: bartenders.length > 0 ? bartenders : null,
+      p_cajeros: cajeros.length > 0 ? cajeros : null
+    })
+
+    if (error) {
+      console.error('Error al abrir jornada completa:', error)
+      throw new Error(error.message || 'No se pudo abrir la jornada')
+    }
+
+    const result = data as any
+
+    // Registrar auditoria
+    await registrarAuditoriaEvento({
+      tipoEvento: 'apertura_turno_nips',
+      entidadId: result.jornada_id,
+      entidadTipo: 'jornada',
+      motivo: null,
+      descripcion: `Apertura de turno con ${result.trabajadores.length} trabajadores y NIPs generados`,
+      datosNuevos: {
+        nombre: result.nombre,
+        notas: notas || null,
+        trabajadores_count: result.trabajadores.length
+      },
+      jornadaId: result.jornada_id
+    })
+
+    return result
+  },
   async getCuentasPendientesCierre(jornadaId: string): Promise<Array<{
     id: string
     mesa: string
