@@ -22,6 +22,7 @@ interface UseNotificacionesRealtimeProps {
   filtro?: FiltroNotif
   sonido?: boolean
   limite?: number
+  jornadaId?: string | null
 }
 
 interface NotificacionRow {
@@ -31,6 +32,7 @@ interface NotificacionRow {
   leida: boolean
   motivo?: string | null
   pedido_id?: string | null
+  jornada_id?: string | null
   created_at: string
   [key: string]: any
 }
@@ -39,7 +41,8 @@ export function useNotificacionesRealtime({
   tabla,
   filtro,
   sonido = true,
-  limite = 50
+  limite = 50,
+  jornadaId
 }: UseNotificacionesRealtimeProps) {
   const [notificaciones, setNotificaciones] = useState<NotificacionRow[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -55,9 +58,6 @@ export function useNotificacionesRealtime({
     setIsMounted(true)
   }, [])
 
-  // ============================================================
-  // Mapeo de tipo de notificación a sonido
-  // ============================================================
   const reproducirSonido = useCallback(
     (tipo: string) => {
       if (!sonido) return
@@ -86,9 +86,6 @@ export function useNotificacionesRealtime({
     [sonido, play]
   )
 
-  // ============================================================
-  // Cargar notificaciones iniciales
-  // ============================================================
   const cargar = useCallback(async () => {
     try {
       let query = supabase
@@ -101,10 +98,17 @@ export function useNotificacionesRealtime({
         query = query.eq(filtro.campo, filtro.valor)
       }
 
+      if (jornadaId) {
+        query = query.eq('jornada_id', jornadaId)
+      }
+
       const { data, error } = await query
 
       if (error) {
-        if (error.code === '42501' || error.message?.includes('permission denied')) {
+        if (
+          error.code === '42501' ||
+          error.message?.includes('permission denied')
+        ) {
           console.warn(`Sin permisos para ${tabla}`)
           setNotificaciones([])
           setUnreadCount(0)
@@ -120,17 +124,16 @@ export function useNotificacionesRealtime({
     } finally {
       setLoading(false)
     }
-  }, [supabase, tabla, filtro, limite])
+  }, [supabase, tabla, filtro, limite, jornadaId])
 
-  // ============================================================
-  // Suscripción realtime
-  // ============================================================
   useEffect(() => {
     if (!isMounted) return
 
     cargar()
 
-    const channelName = `${tabla}_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const channelName = `${tabla}_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2)}`
     const channel = supabase
       .channel(channelName)
       .on(
@@ -144,6 +147,10 @@ export function useNotificacionesRealtime({
           const nueva = payload.new as NotificacionRow
 
           if (filtro && nueva[filtro.campo] !== filtro.valor) {
+            return
+          }
+
+          if (jornadaId && nueva.jornada_id !== jornadaId) {
             return
           }
 
@@ -175,6 +182,7 @@ export function useNotificacionesRealtime({
         (payload) => {
           const actualizada = payload.new as NotificacionRow
           if (filtro && actualizada[filtro.campo] !== filtro.valor) return
+          if (jornadaId && actualizada.jornada_id !== jornadaId) return
 
           setNotificaciones((prev) =>
             prev.map((n) => (n.id === actualizada.id ? actualizada : n))
@@ -203,11 +211,8 @@ export function useNotificacionesRealtime({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMounted, tabla, filtro?.campo, filtro?.valor])
+  }, [isMounted, tabla, filtro?.campo, filtro?.valor, jornadaId])
 
-  // ============================================================
-  // Marcar como leída
-  // ============================================================
   const marcarLeida = useCallback(
     async (id: string) => {
       try {
@@ -218,21 +223,25 @@ export function useNotificacionesRealtime({
         )
         setUnreadCount((prev) => Math.max(0, prev - 1))
       } catch (error) {
-        console.error('Error al marcar leída:', error)
+        console.error('Error al marcar leida:', error)
       }
     },
     [supabase, tabla]
   )
 
-  // ============================================================
-  // Marcar todas como leídas
-  // ============================================================
   const marcarTodasLeidas = useCallback(async () => {
     try {
-      let query = supabase.from(tabla).update({ leida: true }).eq('leida', false)
+      let query = supabase
+        .from(tabla)
+        .update({ leida: true })
+        .eq('leida', false)
 
       if (filtro) {
         query = query.eq(filtro.campo, filtro.valor)
+      }
+
+      if (jornadaId) {
+        query = query.eq('jornada_id', jornadaId)
       }
 
       await query
@@ -242,7 +251,7 @@ export function useNotificacionesRealtime({
     } catch (error) {
       console.error('Error al marcar todas:', error)
     }
-  }, [supabase, tabla, filtro])
+  }, [supabase, tabla, filtro, jornadaId])
 
   return {
     notificaciones,
@@ -254,9 +263,6 @@ export function useNotificacionesRealtime({
   }
 }
 
-// ============================================================
-// Helper: título según tipo
-// ============================================================
 function tituloPorTipo(tipo: string): string {
   const titulos: Record<string, string> = {
     nuevo_pedido: 'Nuevo pedido',
@@ -265,12 +271,12 @@ function tituloPorTipo(tipo: string): string {
     pedido_cobrado: 'Pedido cobrado',
     pedido_asignado: 'Pedido asignado',
     pedido_actualizado: 'Pedido actualizado',
-    pedido_en_preparacion: 'En preparación',
-    cierre_sesion_operativo: 'Cierre de sesión',
+    pedido_en_preparacion: 'En preparacion',
+    cierre_sesion_operativo: 'Cierre de sesion',
     stock_bajo: 'Stock bajo',
     stock_agotado: 'Producto agotado',
     pedido_sin_bartender: 'Sin bartender',
     venta_realizada: 'Venta realizada'
   }
-  return titulos[tipo] || 'Notificación'
+  return titulos[tipo] || 'Notificacion'
 }

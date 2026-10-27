@@ -22,11 +22,11 @@ import { jornadaService, Jornada } from '@/lib/services/jornadaService'
 
 const SECTIONS: SidebarSection[] = [
   {
-    title: 'Operación',
+    title: 'Operacion',
     items: [
       { label: 'Dashboard', href: '/admin', icon: <LayoutDashboard className="h-4 w-4" /> },
       { label: 'Ventas', href: '/admin/sales', icon: <DollarSign className="h-4 w-4" /> },
-      { label: 'Cajas Físicas', href: '/admin/cajas', icon: <Wallet className="h-4 w-4" /> },
+      { label: 'Cajas Fisicas', href: '/admin/cajas', icon: <Wallet className="h-4 w-4" /> },
     ]
   },
   {
@@ -47,9 +47,9 @@ const SECTIONS: SidebarSection[] = [
     ]
   },
   {
-    title: 'Supervisión',
+    title: 'Supervision',
     items: [
-      { label: 'Auditoría', href: '/admin/auditoria', icon: <ShieldAlert className="h-4 w-4" />, highlight: true, color: 'purple' },
+      { label: 'Auditoria', href: '/admin/auditoria', icon: <ShieldAlert className="h-4 w-4" />, highlight: true, color: 'purple' },
     ]
   }
 ]
@@ -62,6 +62,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [redirecting, setRedirecting] = useState(false)
   const [jornadaActiva, setJornadaActiva] = useState<Jornada | null>(null)
   const [isCerrarTurnoOpen, setIsCerrarTurnoOpen] = useState(false)
+
+  const jornadaId = jornadaActiva?.id || null
 
   useEffect(() => {
     if (!loading && !user && !redirecting) {
@@ -88,7 +90,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const handleLogout = async () => {
     try {
       await logout()
-      toast({ title: 'Sesión cerrada', description: 'Has cerrado sesión correctamente' })
+      toast({ title: 'Sesion cerrada', description: 'Has cerrado sesion correctamente' })
       router.push('/')
     } catch (error) {
       router.push('/')
@@ -102,13 +104,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const handleAbrirCerrarTurno = async () => {
-    // Recargar jornada antes de abrir para asegurar que está activa
     try {
       const data = await jornadaService.getJornadaActual()
       if (!data) {
         toast({
           title: 'Sin jornada activa',
-          description: 'Primero abre la jornada del día',
+          description: 'Primero abre la jornada del dia',
           variant: 'destructive'
         })
         return
@@ -148,7 +149,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <ShieldAlert className="h-16 w-16 text-red-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-red-600">Acceso Denegado</h1>
           <p className="text-gray-500 mt-2">No tienes permisos de administrador</p>
-          <Button onClick={handleLogout} className="mt-4">Cerrar Sesión</Button>
+          <Button onClick={handleLogout} className="mt-4">Cerrar Sesion</Button>
         </div>
       </div>
     )
@@ -161,7 +162,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         sections={SECTIONS}
         headerRight={
           <>
-            <NotificationBellUniversal rol="admin" usuarioId={user.id} />
+            <NotificationBellUniversal
+              rol="admin"
+              usuarioId={user.id}
+              jornadaId={jornadaId}
+            />
             <UserMenu
               rol="admin"
               onLogout={handleLogout}
