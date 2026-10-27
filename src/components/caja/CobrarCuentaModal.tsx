@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import {
   DollarSign, CreditCard, Wallet, Loader2, CheckCircle,
-  Receipt, X, UserCircle, Clock, List
+  Receipt, X, UserCircle, Clock, List, AlertTriangle
 } from 'lucide-react'
 import {
   Dialog,
@@ -16,7 +16,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { cuentaService, CuentaAbierta, CuentaConPedidos } from '@/lib/services/cuentaService'
+import {
+  cuentaService,
+  CuentaAbierta,
+  CuentaConPedidos
+} from '@/lib/services/cuentaService'
 
 interface CobrarCuentaModalProps {
   cuenta: CuentaAbierta | null
@@ -63,10 +67,15 @@ export function CobrarCuentaModal({
     if (!cuenta || !detalle) return
 
     const total = detalle.total_actual
-    if (metodoPago === 'efectivo' && parseFloat(efectivoRecibido || '0') < total) {
+    if (
+      metodoPago === 'efectivo' &&
+      parseFloat(efectivoRecibido || '0') < total
+    ) {
       toast({
         title: 'Efectivo insuficiente',
-        description: `Faltan $${(total - parseFloat(efectivoRecibido || '0')).toFixed(2)}`,
+        description: `Faltan $${(
+          total - parseFloat(efectivoRecibido || '0')
+        ).toFixed(2)}`,
         variant: 'destructive'
       })
       return
@@ -75,7 +84,7 @@ export function CobrarCuentaModal({
     setLoading(true)
     try {
       await cuentaService.cerrarCuenta(cuenta.id)
-      
+
       toast({
         title: 'Cuenta cobrada',
         description: `Mesa ${detalle.mesa?.numero} cobrada: $${total.toFixed(2)}`,
@@ -98,12 +107,24 @@ export function CobrarCuentaModal({
 
   if (!cuenta) return null
 
-  const cambio = metodoPago === 'efectivo' 
-    ? Math.max(0, parseFloat(efectivoRecibido || '0') - (detalle?.total_actual || 0))
-    : 0
+  const cambio =
+    metodoPago === 'efectivo'
+      ? Math.max(
+          0,
+          parseFloat(efectivoRecibido || '0') - (detalle?.total_actual || 0)
+        )
+      : 0
+
+  // Info del mesero (si ya registró cobro)
+  const efectivoMesero = Number(detalle?.efectivo_recibido || 0)
+  const cambioMesero = Number(detalle?.cambio_entregado || 0)
+  const meseroYaCobro = efectivoMesero > 0
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && !loading && onClose()}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => !open && !loading && onClose()}
+    >
       <DialogContent className="max-w-lg w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto p-0">
         <DialogHeader className="p-4 sm:p-6 pb-3 border-b bg-gradient-to-r from-emerald-50 to-teal-50">
           <DialogTitle className="flex items-center justify-between">
@@ -137,10 +158,49 @@ export function CobrarCuentaModal({
                   <Clock className="h-3 w-3" /> Abierta
                 </p>
                 <p className="text-sm font-semibold text-gray-900">
-                  {Math.floor((Date.now() - new Date(detalle.abierta_en).getTime()) / 60000)} min
+                  {Math.floor(
+                    (Date.now() - new Date(detalle.abierta_en).getTime()) /
+                      60000
+                  )}{' '}
+                  min
                 </p>
               </div>
             </div>
+
+            {/* Aviso si el mesero ya registró cobro */}
+            {meseroYaCobro && (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold text-amber-900">
+                      El mesero ya cobro al cliente
+                    </p>
+                    <p className="text-[11px] text-amber-700 mt-0.5">
+                      Verifica el efectivo antes de confirmar
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white rounded p-2">
+                    <p className="text-[10px] text-amber-700 font-medium">
+                      Efectivo recibido
+                    </p>
+                    <p className="text-sm font-bold text-amber-900">
+                      ${efectivoMesero.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="bg-white rounded p-2">
+                    <p className="text-[10px] text-amber-700 font-medium">
+                      Cambio entregado
+                    </p>
+                    <p className="text-sm font-bold text-amber-900">
+                      ${cambioMesero.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Lista de items */}
             <div>
@@ -150,36 +210,54 @@ export function CobrarCuentaModal({
                   Detalle de la cuenta
                 </h4>
                 <Badge className="bg-gray-100 text-gray-700 text-[10px]">
-                  {detalle.pedidos.length} pedido{detalle.pedidos.length === 1 ? '' : 's'} · {detalle.items_totales} items
+                  {detalle.pedidos.length} pedido
+                  {detalle.pedidos.length === 1 ? '' : 's'} ·{' '}
+                  {detalle.items_totales} items
                 </Badge>
               </div>
-              
+
               <div className="bg-gray-50 rounded-lg p-2 max-h-[250px] overflow-y-auto space-y-1">
                 {detalle.pedidos.length === 0 ? (
-                  <p className="text-xs text-gray-500 text-center py-3">Sin items registrados</p>
+                  <p className="text-xs text-gray-500 text-center py-3">
+                    Sin items registrados
+                  </p>
                 ) : (
                   detalle.pedidos.map((pedido) => (
-                    <div key={pedido.id} className="bg-white rounded p-2 border border-gray-100">
+                    <div
+                      key={pedido.id}
+                      className="bg-white rounded p-2 border border-gray-100"
+                    >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[10px] text-gray-400">
-                          {new Date(pedido.created_at).toLocaleTimeString('es-MX', {
-                            hour: '2-digit', minute: '2-digit'
-                          })}
+                          {new Date(pedido.created_at).toLocaleTimeString(
+                            'es-MX',
+                            { hour: '2-digit', minute: '2-digit' }
+                          )}
                         </span>
                         <Badge className="bg-gray-100 text-gray-600 text-[9px]">
                           {pedido.estado}
                         </Badge>
                       </div>
-                      {Array.isArray(pedido.items) && pedido.items.map((item: any, idx: number) => (
-                        <div key={idx} className="flex justify-between text-xs py-0.5">
-                          <span className="text-gray-700">
-                            {item.nombre} <span className="text-gray-400">×{item.cantidad}</span>
-                          </span>
-                          <span className="font-medium text-gray-900">
-                            ${((item.precio || 0) * (item.cantidad || 0)).toFixed(2)}
-                          </span>
-                        </div>
-                      ))}
+                      {Array.isArray(pedido.items) &&
+                        pedido.items.map((item: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="flex justify-between text-xs py-0.5"
+                          >
+                            <span className="text-gray-700">
+                              {item.nombre}{' '}
+                              <span className="text-gray-400">
+                                x{item.cantidad}
+                              </span>
+                            </span>
+                            <span className="font-medium text-gray-900">
+                              $
+                              {(
+                                (item.precio || 0) * (item.cantidad || 0)
+                              ).toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
                     </div>
                   ))
                 )}
@@ -189,7 +267,9 @@ export function CobrarCuentaModal({
             {/* Total */}
             <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-emerald-900">Total a cobrar:</span>
+                <span className="text-sm font-semibold text-emerald-900">
+                  Total a cobrar:
+                </span>
                 <span className="text-2xl font-bold text-emerald-700">
                   ${detalle.total_actual.toFixed(2)}
                 </span>
@@ -198,13 +278,17 @@ export function CobrarCuentaModal({
 
             {/* Método de pago */}
             <div className="space-y-2">
-              <Label className="text-xs font-medium">Método de pago</Label>
+              <Label className="text-xs font-medium">Metodo de pago</Label>
               <div className="grid grid-cols-3 gap-2">
                 <Button
                   variant={metodoPago === 'efectivo' ? 'default' : 'outline'}
                   onClick={() => setMetodoPago('efectivo')}
                   disabled={loading}
-                  className={`flex-col h-auto py-2 ${metodoPago === 'efectivo' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                  className={`flex-col h-auto py-2 ${
+                    metodoPago === 'efectivo'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : ''
+                  }`}
                 >
                   <DollarSign className="h-4 w-4 mb-1" />
                   <span className="text-[10px]">Efectivo</span>
@@ -213,16 +297,26 @@ export function CobrarCuentaModal({
                   variant={metodoPago === 'tarjeta' ? 'default' : 'outline'}
                   onClick={() => setMetodoPago('tarjeta')}
                   disabled={loading}
-                  className={`flex-col h-auto py-2 ${metodoPago === 'tarjeta' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                  className={`flex-col h-auto py-2 ${
+                    metodoPago === 'tarjeta'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : ''
+                  }`}
                 >
                   <CreditCard className="h-4 w-4 mb-1" />
                   <span className="text-[10px]">Tarjeta</span>
                 </Button>
                 <Button
-                  variant={metodoPago === 'transferencia' ? 'default' : 'outline'}
+                  variant={
+                    metodoPago === 'transferencia' ? 'default' : 'outline'
+                  }
                   onClick={() => setMetodoPago('transferencia')}
                   disabled={loading}
-                  className={`flex-col h-auto py-2 ${metodoPago === 'transferencia' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                  className={`flex-col h-auto py-2 ${
+                    metodoPago === 'transferencia'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : ''
+                  }`}
                 >
                   <Wallet className="h-4 w-4 mb-1" />
                   <span className="text-[10px]">Transf.</span>
@@ -233,19 +327,26 @@ export function CobrarCuentaModal({
             {/* Efectivo recibido */}
             {metodoPago === 'efectivo' && (
               <div className="space-y-2">
-                <Label htmlFor="efectivo" className="text-xs">Efectivo recibido</Label>
+                <Label htmlFor="efectivo" className="text-xs">
+                  Efectivo recibido {meseroYaCobro ? '(confirmar)' : ''}
+                </Label>
                 <Input
                   id="efectivo"
                   type="number"
                   placeholder="0.00"
-                  value={efectivoRecibido}
+                  value={
+                    efectivoRecibido ||
+                    (meseroYaCobro ? String(efectivoMesero) : '')
+                  }
                   onChange={(e) => setEfectivoRecibido(e.target.value)}
                   disabled={loading}
                 />
                 {cambio > 0 && (
                   <div className="flex justify-between text-sm bg-blue-50 p-2 rounded-lg">
                     <span className="font-medium text-blue-800">Cambio:</span>
-                    <span className="font-bold text-blue-700">${cambio.toFixed(2)}</span>
+                    <span className="font-bold text-blue-700">
+                      ${cambio.toFixed(2)}
+                    </span>
                   </div>
                 )}
               </div>
@@ -275,7 +376,7 @@ export function CobrarCuentaModal({
                 ) : (
                   <>
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    Cobrar ${detalle.total_actual.toFixed(2)}
+                    Confirmar cobro ${detalle.total_actual.toFixed(2)}
                   </>
                 )}
               </Button>

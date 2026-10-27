@@ -18,6 +18,8 @@ export interface CuentaAbierta {
   abierta_en: string
   cerrada_en: string | null
   notas: string | null
+  efectivo_recibido: number | null
+  cambio_entregado: number | null
   created_at: string
   updated_at: string
   mesa?: { numero: string; ubicacion: string } | null
@@ -252,6 +254,33 @@ export const cuentaService = {
   /**
    * Marca la cuenta como "cobrando"
    */
+    /**
+   * Registra el cobro del mesero al cliente.
+   * NO cierra la cuenta (eso lo hace la caja), solo:
+   * - Cambia estado a 'cobrando'
+   * - Guarda efectivo_recibido y cambio_entregado
+   */
+  async registrarCobroMesero(
+    cuentaId: string,
+    efectivoRecibido: number,
+    cambioEntregado: number
+  ): Promise<void> {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('cuentas_abiertas')
+      .update({
+        estado: 'cobrando',
+        efectivo_recibido: efectivoRecibido,
+        cambio_entregado: cambioEntregado,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', cuentaId)
+      .eq('estado', 'cuenta_solicitada') // solo si esta solicitada
+
+    if (error) {
+      throw new Error('No se pudo registrar el cobro: ' + error.message)
+    }
+  },
   async marcarCobrando(cuentaId: string): Promise<void> {
     const supabase = createClient()
     await supabase

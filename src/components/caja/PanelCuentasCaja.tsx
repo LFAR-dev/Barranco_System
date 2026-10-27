@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Receipt, Clock, UserCircle, AlertCircle,
-  Loader2, RefreshCw, ChevronRight
+  Loader2, RefreshCw, ChevronRight, DollarSign
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
 import { cuentaService, CuentaAbierta } from '@/lib/services/cuentaService'
 import { useToast } from '@/hooks/use-toast'
@@ -16,7 +17,10 @@ interface PanelCuentasCajaProps {
   jornadaId?: string | null
 }
 
-export function PanelCuentasCaja({ onCuentaClick, jornadaId }: PanelCuentasCajaProps) {
+export function PanelCuentasCaja({
+  onCuentaClick,
+  jornadaId
+}: PanelCuentasCajaProps) {
   const { toast } = useToast()
   const [cuentas, setCuentas] = useState<CuentaAbierta[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,10 +65,9 @@ export function PanelCuentasCaja({ onCuentaClick, jornadaId }: PanelCuentasCajaP
     }
   }, [cargarCuentas, supabase, jornadaId])
 
+  const cobrando = cuentas.filter((c) => c.estado === 'cobrando')
   const solicitadas = cuentas.filter((c) => c.estado === 'cuenta_solicitada')
-  const abiertas = cuentas.filter(
-    (c) => c.estado === 'abierta' || c.estado === 'cobrando'
-  )
+  const abiertas = cuentas.filter((c) => c.estado === 'abierta')
 
   const tiempoAbierta = (fecha: string) => {
     const minutos = Math.floor((Date.now() - new Date(fecha).getTime()) / 60000)
@@ -91,7 +94,9 @@ export function PanelCuentasCaja({ onCuentaClick, jornadaId }: PanelCuentasCajaP
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Receipt className="h-4 w-4 text-emerald-600" />
-            <h3 className="text-sm font-bold text-gray-900">Cuentas de Mesa</h3>
+            <h3 className="text-sm font-bold text-gray-900">
+              Cuentas de Mesa
+            </h3>
           </div>
           <Button
             variant="ghost"
@@ -103,6 +108,73 @@ export function PanelCuentasCaja({ onCuentaClick, jornadaId }: PanelCuentasCajaP
           </Button>
         </div>
 
+        {/* CUENTAS COBRANDO (prioridad maxima: mesero ya cobro) */}
+        {cobrando.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5 text-blue-600" />
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                Cobradas por mesero ({cobrando.length})
+              </p>
+            </div>
+            {cobrando.map((cuenta) => {
+              const efectivo = Number(cuenta.efectivo_recibido || 0)
+              const cambio = Number(cuenta.cambio_entregado || 0)
+              return (
+                <button
+                  key={cuenta.id}
+                  onClick={() => onCuentaClick(cuenta)}
+                  className="w-full text-left bg-blue-50 border-2 border-blue-400 rounded-lg p-3 hover:bg-blue-100 hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
+                        {cuenta.mesa?.numero || '?'}
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm">
+                          Mesa {cuenta.mesa?.numero}
+                        </p>
+                        <p className="text-[10px] text-gray-600 flex items-center gap-1">
+                          <UserCircle className="h-2.5 w-2.5" />
+                          {cuenta.mesero?.nombre} {cuenta.mesero?.apellido}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-blue-600 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                  <div className="bg-white rounded p-2 mb-2 space-y-1">
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-gray-600">Efectivo recibido:</span>
+                      <span className="font-semibold text-gray-900">
+                        ${efectivo.toFixed(2)}
+                      </span>
+                    </div>
+                    {cambio > 0 && (
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-600">Cambio entregado:</span>
+                        <span className="font-semibold text-blue-700">
+                          ${cambio.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-blue-200">
+                    <span className="text-[10px] text-blue-700 flex items-center gap-1">
+                      <Clock className="h-2.5 w-2.5" />
+                      {tiempoAbierta(cuenta.abierta_en)}
+                    </span>
+                    <span className="font-bold text-blue-700 text-base">
+                      ${cuenta.total_actual.toFixed(2)}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* CUENTAS SOLICITADAS (mesero pidio cuenta, aun no cobro) */}
         {solicitadas.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-1.5">
@@ -148,6 +220,7 @@ export function PanelCuentasCaja({ onCuentaClick, jornadaId }: PanelCuentasCajaP
           </div>
         )}
 
+        {/* CUENTAS ABIERTAS (mesero atendiendo, aun sin pedir cuenta) */}
         {abiertas.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -169,7 +242,8 @@ export function PanelCuentasCaja({ onCuentaClick, jornadaId }: PanelCuentasCajaP
                         Mesa {cuenta.mesa?.numero}
                       </p>
                       <p className="text-[10px] text-gray-500">
-                        {cuenta.mesero?.nombre?.charAt(0)}. {cuenta.mesero?.apellido} ·{' '}
+                        {cuenta.mesero?.nombre?.charAt(0)}.{' '}
+                        {cuenta.mesero?.apellido} ·{' '}
                         {tiempoAbierta(cuenta.abierta_en)}
                       </p>
                     </div>
