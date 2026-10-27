@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Users, Plus, X, Loader2, UserPlus, UserMinus,
-  Coffee, ShoppingCart, Wine, RefreshCw
+  Users, Plus, Loader2, UserPlus, UserMinus,
+  Coffee, ShoppingCart, Wine, RefreshCw, KeyRound, Copy, Check
 } from 'lucide-react'
 import {
   Dialog,
@@ -81,6 +81,8 @@ export function GestionPersonalJornadaModal({
   const [agregando, setAgregando] = useState(false)
   const [rolSeleccionado, setRolSeleccionado] = useState<RolTurno>('mesero')
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('')
+  const [nipGenerado, setNipGenerado] = useState<{ nip: string; usuario: string } | null>(null)
+  const [copiado, setCopiado] = useState(false)
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -118,7 +120,7 @@ export function GestionPersonalJornadaModal({
         jornadaId,
         usuarioSeleccionado,
         rolSeleccionado,
-        true // rebalancear siempre al agregar mesero
+        true
       )
 
       const esMesero = rolSeleccionado === 'mesero'
@@ -131,12 +133,13 @@ export function GestionPersonalJornadaModal({
       })
 
       setUsuarioSeleccionado('')
+      // Forzar recarga desde BD
       await cargar()
       onSuccess?.()
     } catch (error: any) {
       toast({
-        title: 'Error',
-        description: error.message || 'No se pudo agregar',
+        title: 'Error al agregar',
+        description: error.message || 'No se pudo agregar al trabajador',
         variant: 'destructive',
       })
     } finally {
@@ -173,8 +176,50 @@ export function GestionPersonalJornadaModal({
       onSuccess?.()
     } catch (error: any) {
       toast({
+        title: 'Error al quitar',
+        description: error.message || 'No se pudo quitar al trabajador',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleGenerarNIP = async (trabajador: TrabajadorTurno) => {
+    try {
+      const result = await turnoService.generarNIP(jornadaId, trabajador.usuario_id)
+      setNipGenerado({
+        nip: result.nip,
+        usuario: `${trabajador.nombre} ${trabajador.apellido}`
+      })
+      toast({
+        title: 'NIP generado',
+        description: `NIP generado para ${trabajador.nombre}`,
+        variant: 'success',
+      })
+      await cargar()
+    } catch (error: any) {
+      toast({
+        title: 'Error al generar NIP',
+        description: error.message || 'No se pudo generar el NIP',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleCopiarNIP = async () => {
+    if (!nipGenerado) return
+    try {
+      await navigator.clipboard.writeText(nipGenerado.nip)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+      toast({
+        title: 'NIP copiado',
+        description: 'El NIP esta en el portapapeles',
+        variant: 'success',
+      })
+    } catch {
+      toast({
         title: 'Error',
-        description: error.message || 'No se pudo quitar',
+        description: 'No se pudo copiar al portapapeles',
         variant: 'destructive',
       })
     }
@@ -207,6 +252,35 @@ export function GestionPersonalJornadaModal({
           </DialogDescription>
         </DialogHeader>
 
+        {nipGenerado && (
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-emerald-900">
+                  NIP generado para {nipGenerado.usuario}
+                </p>
+                <p className="text-[10px] text-emerald-700">
+                  Copialo y entregalo al trabajador. No se volvera a mostrar.
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setNipGenerado(null)}>
+                Cerrar
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-white border border-emerald-300 rounded px-3 py-2 text-2xl font-mono font-bold text-emerald-900 text-center tracking-wider">
+                {nipGenerado.nip}
+              </code>
+              <Button
+                onClick={handleCopiarNIP}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="py-8 text-center">
             <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto" />
@@ -214,7 +288,6 @@ export function GestionPersonalJornadaModal({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Agregar trabajador */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
               <p className="text-xs font-semibold text-blue-900 flex items-center gap-1">
                 <UserPlus className="h-3.5 w-3.5" />
@@ -258,10 +331,7 @@ export function GestionPersonalJornadaModal({
                       </SelectItem>
                     ) : (
                       disponiblesFiltrados.map((d) => (
-                        <SelectItem
-                          key={d.usuario_id}
-                          value={d.usuario_id}
-                        >
+                        <SelectItem key={d.usuario_id} value={d.usuario_id}>
                           {d.nombre} {d.apellido}
                         </SelectItem>
                       ))
@@ -284,19 +354,13 @@ export function GestionPersonalJornadaModal({
               </div>
             </div>
 
-            {/* Lista por rol */}
             <div className="space-y-3">
               {agrupados.map((grupo) => (
-                <div
-                  key={grupo.valor}
-                  className="border rounded-lg overflow-hidden"
-                >
+                <div key={grupo.valor} className="border rounded-lg overflow-hidden">
                   <div className="bg-gray-50 px-3 py-2 border-b flex items-center justify-between">
                     <div className={`flex items-center gap-2 ${grupo.color}`}>
                       {grupo.icon}
-                      <span className="text-xs font-semibold">
-                        {grupo.label}
-                      </span>
+                      <span className="text-xs font-semibold">{grupo.label}</span>
                     </div>
                     <Badge variant="secondary" className="text-[10px]">
                       {grupo.trabajadores.length}
@@ -323,20 +387,38 @@ export function GestionPersonalJornadaModal({
                               <p className="text-sm font-medium text-gray-900 truncate">
                                 {t.nombre} {t.apellido}
                               </p>
-                              <p className="text-[10px] text-gray-500 truncate">
-                                {t.email}
-                              </p>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <p className="text-[10px] text-gray-500 truncate">
+                                  {t.email}
+                                </p>
+                                {t.tiene_acceso && (
+                                  <Badge className="bg-emerald-100 text-emerald-700 text-[9px] px-1 py-0">
+                                    NIP activo
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleQuitar(t)}
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700 shrink-0 h-7"
-                          >
-                            <UserMinus className="h-3.5 w-3.5 mr-1" />
-                            Quitar
-                          </Button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleGenerarNIP(t)}
+                              className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 h-7"
+                              title="Generar NIP nuevo"
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleQuitar(t)}
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700 h-7"
+                              title="Quitar del turno"
+                            >
+                              <UserMinus className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
