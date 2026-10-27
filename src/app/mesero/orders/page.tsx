@@ -1,10 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  ArrowLeft, Plus, RefreshCw, Coffee, Clock,
+  ArrowLeft, RefreshCw, Coffee,
   CheckCircle, AlertCircle, UserCircle, DollarSign, Users
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,38 +18,53 @@ import { MesaAccionesPanel } from '@/components/mesas/MesaAccionesPanel'
 import { useMeserosActivos } from '@/hooks/useMeserosActivos'
 
 export default function MeseroOrdersPage() {
-  const { user } = useAuth()
-  const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
   const { toast } = useToast()
 
   const [mesas, setMesas] = useState<Mesa[]>([])
   const [cuentas, setCuentas] = useState<CuentaAbierta[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
-  
+
   const { meseros: meserosActivos } = useMeserosActivos()
 
   useEffect(() => {
+    if (authLoading) return
     if (user) {
       cargarDatos()
+    } else {
+      setLoading(false)
     }
-  }, [user])
+  }, [user, authLoading])
 
   const cargarDatos = async () => {
     setLoading(true)
+    setError(null)
     try {
       const [mesasData, cuentasData] = await Promise.all([
-        mesaService.getAll(true),
-        user ? cuentaService.getCuentasDelMesero(user.id) : Promise.resolve([])
+        mesaService.getAll(true).catch((e) => {
+          console.error('Error cargando mesas:', e)
+          return []
+        }),
+        user
+          ? cuentaService.getCuentasDelMesero(user.id).catch((e) => {
+              console.error('Error cargando cuentas:', e)
+              return []
+            })
+          : Promise.resolve([])
       ])
-      setMesas(mesasData)
-      setCuentas(cuentasData)
-    } catch (error) {
-      console.error('Error al cargar datos:', error)
+      setMesas(Array.isArray(mesasData) ? mesasData : [])
+      setCuentas(Array.isArray(cuentasData) ? cuentasData : [])
+    } catch (err: any) {
+      console.error('Error al cargar datos:', err)
+      setError(err?.message || 'No se pudieron cargar las mesas')
+      setMesas([])
+      setCuentas([])
       toast({
         title: 'Error',
-        description: 'No se pudieron cargar las mesas',
+        description: err?.message || 'No se pudieron cargar las mesas',
         variant: 'destructive'
       })
     } finally {
@@ -67,22 +81,36 @@ export default function MeseroOrdersPage() {
     cargarDatos()
   }
 
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600" />
+      </div>
+    )
+  }
+
   if (!user) return null
 
-  const misCuentasActivas = cuentas.filter(c => c.estado !== 'cerrada')
-  const totalMisCuentas = misCuentasActivas.reduce((sum, c) => sum + c.total_actual, 0)
+  const misCuentasActivas = (cuentas || []).filter(
+    (c) => c && c.estado !== 'cerrada'
+  )
+  const totalMisCuentas = misCuentasActivas.reduce(
+    (sum, c) => sum + (Number(c?.total_actual) || 0),
+    0
+  )
 
   const stats = {
-    total: mesas.length,
-    disponibles: mesas.filter(m => m.estado === 'disponible').length,
-    misMesas: mesas.filter(m => m.mesero_id === user.id).length,
-    cuentasSolicitadas: mesas.filter(m => m.estado === 'cuenta_solicitada').length
+    total: (mesas || []).length,
+    disponibles: (mesas || []).filter((m) => m?.estado === 'disponible').length,
+    misMesas: (mesas || []).filter((m) => m?.mesero_id === user.id).length,
+    cuentasSolicitadas: (mesas || []).filter(
+      (m) => m?.estado === 'cuenta_solicitada'
+    ).length
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
-        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
           <div className="flex items-center gap-3">
             <Link href="/mesero">
@@ -92,8 +120,12 @@ export default function MeseroOrdersPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Mapa de Mesas</h1>
-              <p className="text-sm text-gray-500">Selecciona una mesa para atenderla</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+                Mapa de Mesas
+              </h1>
+              <p className="text-sm text-gray-500">
+                Selecciona una mesa para atenderla
+              </p>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={cargarDatos}>
@@ -102,14 +134,32 @@ export default function MeseroOrdersPage() {
           </Button>
         </div>
 
-        {/* Stats */}
+        {error && (
+          <Card className="mb-4 border-red-200 bg-red-50">
+            <CardContent className="p-3 flex items-center gap-2 text-red-700 text-sm">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{error}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={cargarDatos}
+                className="ml-auto text-red-700"
+              >
+                Reintentar
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6">
           <Card>
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Total mesas</p>
-                  <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.total}</p>
+                  <p className="text-lg sm:text-xl font-bold text-gray-900">
+                    {stats.total}
+                  </p>
                 </div>
                 <div className="p-2 bg-gray-100 rounded-lg">
                   <Coffee className="h-4 w-4 text-gray-600" />
@@ -122,7 +172,9 @@ export default function MeseroOrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Disponibles</p>
-                  <p className="text-lg sm:text-xl font-bold text-green-600">{stats.disponibles}</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-600">
+                    {stats.disponibles}
+                  </p>
                 </div>
                 <div className="p-2 bg-green-100 rounded-lg">
                   <CheckCircle className="h-4 w-4 text-green-600" />
@@ -135,7 +187,9 @@ export default function MeseroOrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Mis mesas</p>
-                  <p className="text-lg sm:text-xl font-bold text-orange-600">{stats.misMesas}</p>
+                  <p className="text-lg sm:text-xl font-bold text-orange-600">
+                    {stats.misMesas}
+                  </p>
                 </div>
                 <div className="p-2 bg-orange-100 rounded-lg">
                   <UserCircle className="h-4 w-4 text-orange-600" />
@@ -148,7 +202,9 @@ export default function MeseroOrdersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500">Cuenta pedida</p>
-                  <p className="text-lg sm:text-xl font-bold text-amber-600">{stats.cuentasSolicitadas}</p>
+                  <p className="text-lg sm:text-xl font-bold text-amber-600">
+                    {stats.cuentasSolicitadas}
+                  </p>
                 </div>
                 <div className="p-2 bg-amber-100 rounded-lg">
                   <AlertCircle className="h-4 w-4 text-amber-600" />
@@ -158,7 +214,6 @@ export default function MeseroOrdersPage() {
           </Card>
         </div>
 
-        {/* Banner cuentas activas */}
         {misCuentasActivas.length > 0 && (
           <Card className="mb-4 border-l-4 border-l-emerald-500 bg-emerald-50">
             <CardContent className="p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2">
@@ -174,14 +229,14 @@ export default function MeseroOrdersPage() {
                 </div>
               </div>
               <Badge className="bg-emerald-600 text-white">
-                {misCuentasActivas.length} mesa{misCuentasActivas.length === 1 ? '' : 's'}
+                {misCuentasActivas.length} mesa
+                {misCuentasActivas.length === 1 ? '' : 's'}
               </Badge>
             </CardContent>
           </Card>
         )}
 
-        {/* Leyenda de colores de meseros */}
-        {meserosActivos.length > 0 && (
+        {Array.isArray(meserosActivos) && meserosActivos.length > 0 && (
           <Card className="mb-3">
             <CardContent className="p-3">
               <div className="flex items-center gap-2 flex-wrap">
@@ -190,10 +245,10 @@ export default function MeseroOrdersPage() {
                   Meseros activos:
                 </div>
                 {meserosActivos.map((m) => {
-                  const esYo = m.usuario_id === user?.id
+                  const esYo = m?.usuario_id === user?.id
                   return (
                     <div
-                      key={m.usuario_id}
+                      key={m?.usuario_id || Math.random()}
                       className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-xs ${
                         esYo
                           ? 'bg-amber-50 border-amber-300 text-amber-900 font-semibold'
@@ -202,9 +257,12 @@ export default function MeseroOrdersPage() {
                     >
                       <span
                         className="w-2.5 h-2.5 rounded-full border border-white"
-                        style={{ backgroundColor: m.color_mapa || '#6b7280' }}
+                        style={{
+                          backgroundColor: m?.color_mapa || '#6b7280'
+                        }}
                       />
-                      {m.nombre} {esYo && <span className="text-[9px]">(tu)</span>}
+                      {m?.nombre || 'Sin nombre'}{' '}
+                      {esYo && <span className="text-[9px]">(tu)</span>}
                     </div>
                   )
                 })}
@@ -213,11 +271,21 @@ export default function MeseroOrdersPage() {
           </Card>
         )}
 
-        {/* Mapa */}
         {loading && mesas.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto" />
+              <p className="text-sm text-gray-500 mt-3">Cargando mesas...</p>
+            </CardContent>
+          </Card>
+        ) : mesas.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Coffee className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">No hay mesas disponibles</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Contacta al administrador si esto no deberia pasar
+              </p>
             </CardContent>
           </Card>
         ) : (
@@ -225,10 +293,10 @@ export default function MeseroOrdersPage() {
             onMesaClick={handleMesaClick}
             mesaSeleccionadaId={mesaSeleccionada?.id}
             meseroActualId={user?.id || null}
+            meserosActivos={meserosActivos}
           />
         )}
 
-        {/* Leyenda */}
         <Card className="mt-4 bg-gray-50 border-gray-200">
           <CardContent className="p-3">
             <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
@@ -257,8 +325,7 @@ export default function MeseroOrdersPage() {
         </Card>
       </div>
 
-      {/* Panel de acciones */}
-      {user && (
+      {user && mesaSeleccionada && (
         <MesaAccionesPanel
           mesa={mesaSeleccionada}
           isOpen={isPanelOpen}

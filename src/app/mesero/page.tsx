@@ -3,7 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Coffee, Clock, CheckCircle, UserRound, Loader2, Utensils, MapPin } from 'lucide-react'
+import {
+  Plus, Coffee, Clock, CheckCircle, UserRound, Loader2,
+  Utensils, MapPin, Receipt, Users
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,13 +26,13 @@ import { UserMenu } from '@/components/layout/UserMenu'
 import { SidebarSection } from '@/components/layout/AppSidebar'
 import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
 
-
 const SECTIONS: SidebarSection[] = [
   {
     title: 'Mi turno',
     items: [
       { label: 'Mis pedidos', href: '/mesero', icon: <Coffee className="h-4 w-4" /> },
-      { label: 'Nuevo pedido', href: '/mesero/orders/new', icon: <Plus className="h-4 w-4" /> },
+      { label: 'Mesas y cuentas', href: '/mesero/orders', icon: <MapPin className="h-4 w-4" /> },
+      { label: 'Mis mesas', href: '/mesero/mis-mesas', icon: <Receipt className="h-4 w-4" /> },
     ]
   }
 ]
@@ -38,12 +41,12 @@ export default function MeseroDashboard() {
   const { user, logout } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
-const { jornadaActiva, jornadaId, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
-const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()  
-  // GPS
-  const { 
-    estado: gpsEstado, 
-    solicitar: solicitarGPS, 
+  const { jornadaActiva, jornadaId, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
+  const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
+
+  const {
+    estado: gpsEstado,
+    solicitar: solicitarGPS,
     detener: detenerGPS,
     precision: gpsPrecision
   } = useGeolocation({
@@ -57,7 +60,7 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
   const [showGPSModal, setShowGPSModal] = useState(false)
   const [hasAskedGPS, setHasAskedGPS] = useState(false)
 
-    useEffect(() => {
+  useEffect(() => {
     if (user && jornadaId) {
       fetchOrders()
       const interval = setInterval(fetchOrders, 30000)
@@ -65,7 +68,6 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
     }
   }, [user, jornadaId])
 
-  // Verificar si ya pidió permiso GPS antes
   useEffect(() => {
     if (!user?.id) return
     const asked = localStorage.getItem(`gps_asked_${user.id}`)
@@ -73,14 +75,13 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
       setShowGPSModal(true)
     } else {
       setHasAskedGPS(true)
-      // Si ya aceptó antes, auto-iniciar
       if (asked === 'accepted') {
         solicitarGPS()
       }
     }
   }, [user?.id])
 
-   const fetchOrders = async () => {
+  const fetchOrders = async () => {
     if (!jornadaId) {
       setOrders([])
       setLoading(false)
@@ -117,8 +118,8 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
     detenerGPS()
     await logout()
     toast({
-      title: 'Sesión cerrada',
-      description: 'Has cerrado sesión correctamente',
+      title: 'Sesion cerrada',
+      description: 'Has cerrado sesion correctamente',
       variant: 'default'
     })
     router.push('/')
@@ -140,8 +141,8 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
       localStorage.setItem(`gps_asked_${user.id}`, 'rejected')
     }
     toast({
-      title: 'Ubicación no compartida',
-      description: 'Puedes activarla después desde el botón de ubicación',
+      title: 'Ubicacion no compartida',
+      description: 'Puedes activarla despues desde el boton de ubicacion',
       variant: 'default'
     })
   }
@@ -150,8 +151,8 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
     if (gpsEstado === 'activo') {
       detenerGPS()
       toast({
-        title: 'Ubicación desactivada',
-        description: 'Ya no compartes tu ubicación',
+        title: 'Ubicacion desactivada',
+        description: 'Ya no compartes tu ubicacion',
         variant: 'default'
       })
     } else {
@@ -161,7 +162,7 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
 
   const nombreCompleto = `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || user?.email || 'Usuario'
 
-  if (loading && orders.length === 0) {
+  if (loading && orders.length === 0 && jornadaId) {
     return (
       <div className="flex justify-center items-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
@@ -170,50 +171,49 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
   }
 
   const misPedidos = orders.filter(o => o.mesero_id === user?.id)
-  const pedidosActivos = misPedidos.filter(o => 
+  const pedidosActivos = misPedidos.filter(o =>
     o.estado === 'pendiente' || o.estado === 'preparando' || o.estado === 'listo'
   )
   const listosParaRecoger = misPedidos.filter(o => o.estado === 'listo')
   const pendientes = misPedidos.filter(o => o.estado === 'pendiente' || o.estado === 'preparando')
 
-  // Configuración visual del botón GPS
   const getGPSButtonConfig = () => {
     switch (gpsEstado) {
       case 'activo':
         return {
           className: 'text-green-600 bg-green-50 hover:bg-green-100 border-green-200',
           icon: <MapPin className="h-4 w-4" />,
-          title: `Ubicación compartida (precisión: ${gpsPrecision ? Math.round(gpsPrecision) + 'm' : 'alta'})`
+          title: `Ubicacion compartida (precision: ${gpsPrecision ? Math.round(gpsPrecision) + 'm' : 'alta'})`
         }
       case 'solicitando':
         return {
           className: 'text-amber-600 bg-amber-50 border-amber-200',
           icon: <Loader2 className="h-4 w-4 animate-spin" />,
-          title: 'Solicitando permiso de ubicación...'
+          title: 'Solicitando permiso de ubicacion...'
         }
       case 'denegado':
         return {
           className: 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200',
           icon: <MapPin className="h-4 w-4" />,
-          title: 'Permiso de ubicación denegado - click para reintentar'
+          title: 'Permiso de ubicacion denegado - click para reintentar'
         }
       case 'error':
         return {
           className: 'text-red-600 bg-red-50 border-red-200',
           icon: <MapPin className="h-4 w-4" />,
-          title: 'Error de ubicación - click para reintentar'
+          title: 'Error de ubicacion - click para reintentar'
         }
       case 'no_soportado':
         return {
           className: 'text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed',
           icon: <MapPin className="h-4 w-4" />,
-          title: 'Este dispositivo no soporta geolocalización'
+          title: 'Este dispositivo no soporta geolocalizacion'
         }
       default:
         return {
           className: 'text-gray-600 hover:bg-gray-100 border-gray-200',
           icon: <MapPin className="h-4 w-4" />,
-          title: 'Activar ubicación GPS'
+          title: 'Activar ubicacion GPS'
         }
     }
   }
@@ -238,7 +238,6 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
         sidebarHeaderSlot={user?.id ? <ToggleDisponibilidad rol="mesero" usuarioId={user.id} /> : null}
         headerRight={
           <>
-            {/* Botón GPS */}
             <Button
               variant="outline"
               size="icon"
@@ -271,33 +270,51 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                ¡Hola, {user?.nombre || user?.email?.split('@')[0] || 'Mesero'}!
+                Hola, {user?.nombre || user?.email?.split('@')[0] || 'Mesero'}
               </h1>
               <p className="text-sm text-gray-500 flex items-center gap-2 flex-wrap">
-                Gestiona pedidos y toma órdenes
+                Gestiona pedidos y toma ordenes
                 {gpsEstado === 'activo' && (
                   <Badge className="bg-green-100 text-green-700 text-[10px]">
                     <MapPin className="h-2.5 w-2.5 mr-1" />
-                    Ubicación activa
+                    Ubicacion activa
                   </Badge>
                 )}
               </p>
             </div>
-            {turnoActivo ? (
-              <Link href="/mesero/orders/new">
-                <Button className="bg-orange-600 hover:bg-orange-700 shrink-0">
-                  <Plus className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Nuevo Pedido</span>
-                  <span className="sm:hidden">Nuevo</span>
-                </Button>
-              </Link>
-            ) : (
-              <Button disabled className="bg-gray-300 text-gray-500 shrink-0 cursor-not-allowed">
-                <Plus className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Nuevo Pedido</span>
-                <span className="sm:hidden">Nuevo</span>
-              </Button>
-            )}
+            <div className="flex gap-2 shrink-0">
+              {turnoActivo && (
+                <>
+                  <Link href="/mesero/mis-mesas">
+                    <Button variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+                      <Receipt className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Mis mesas</span>
+                      <span className="sm:hidden">Mesas</span>
+                    </Button>
+                  </Link>
+                  <Link href="/mesero/orders">
+                    <Button className="bg-orange-600 hover:bg-orange-700">
+                      <Plus className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Nuevo Pedido</span>
+                      <span className="sm:hidden">Nuevo</span>
+                    </Button>
+                  </Link>
+                </>
+              )}
+              {!turnoActivo && (
+                <>
+                  <Button disabled variant="outline" className="border-gray-200 text-gray-400">
+                    <Receipt className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Mis mesas</span>
+                  </Button>
+                  <Button disabled className="bg-gray-300 text-gray-500">
+                    <Plus className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Nuevo Pedido</span>
+                    <span className="sm:hidden">Nuevo</span>
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           {listosParaRecoger.length > 0 && (
@@ -307,10 +324,10 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
               </div>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-green-900 text-sm sm:text-base">
-                  ¡Tienes {listosParaRecoger.length} pedido{listosParaRecoger.length === 1 ? '' : 's'} listo{listosParaRecoger.length === 1 ? '' : 's'} para recoger!
+                  Tienes {listosParaRecoger.length} pedido{listosParaRecoger.length === 1 ? '' : 's'} listo{listosParaRecoger.length === 1 ? '' : 's'} para recoger
                 </p>
                 <p className="text-xs text-green-700">
-                  Pasa a la barra a recogerlos y entrégalos
+                  Pasa a la barra a recogerlos y entregalos
                 </p>
               </div>
               <Badge className="bg-green-600 text-white text-base sm:text-lg px-3 py-1 shrink-0">
@@ -336,7 +353,7 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm sm:text-base flex items-center gap-2">
                   <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-500" />
-                  En preparación
+                  En preparacion
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -371,18 +388,18 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
                   <div className="text-center py-6 sm:py-8">
                     <Coffee className="h-10 w-10 sm:h-12 sm:w-12 text-gray-300 mx-auto mb-2" />
                     <p className="text-gray-500 text-sm">No tienes pedidos activos</p>
-                    <p className="text-xs text-gray-400">Los pedidos nuevos aparecerán aquí</p>
+                    <p className="text-xs text-gray-400">Los pedidos nuevos apareceran aqui</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {pedidosActivos.map((order) => {
                       const esListo = order.estado === 'listo'
                       return (
-                        <div 
-                          key={order.id} 
+                        <div
+                          key={order.id}
                           className={`rounded-lg p-3 border-2 transition-all ${
-                            esListo 
-                              ? 'border-green-400 bg-green-50 shadow-md' 
+                            esListo
+                              ? 'border-green-400 bg-green-50 shadow-md'
                               : 'border-gray-200'
                           }`}
                         >
@@ -400,7 +417,7 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
                                 </span>
                               </div>
                               <p className="text-xs text-gray-500 mt-1">
-                                {order.items?.length || 0} items •{' '}
+                                {order.items?.length || 0} items {'·'}{' '}
                                 {new Date(order.created_at).toLocaleTimeString()}
                               </p>
                             </div>
@@ -411,11 +428,11 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
 
                           <div className="flex flex-wrap gap-1 mt-1">
                             {order.items?.map((item: any, idx: number) => (
-                              <span 
-                                key={idx} 
+                              <span
+                                key={idx}
                                 className="text-xs bg-white border border-gray-200 px-2 py-0.5 rounded-md"
                               >
-                                {item.nombre} ×{item.cantidad}
+                                {item.nombre} x{item.cantidad}
                               </span>
                             ))}
                           </div>
@@ -423,7 +440,7 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
                           {esListo && (
                             <div className="mt-2 pt-2 border-t border-green-200 flex items-center gap-2 text-xs text-green-800">
                               <Utensils className="h-3 w-3" />
-                              <span className="font-medium">¡Ve a la barra a recogerlo!</span>
+                              <span className="font-medium">Ve a la barra a recogerlo</span>
                             </div>
                           )}
                         </div>
@@ -437,7 +454,6 @@ const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = 
         </div>
       </AppShell>
 
-      {/* Modal de permiso GPS */}
       <GPSPermissionModal
         isOpen={showGPSModal}
         onAccept={handleAcceptGPS}

@@ -24,7 +24,11 @@ import { Minimapa } from './Minimapa'
 import { EditorToolbar, HerramientaEditor } from './EditorToolbar'
 import { SnappingGuides } from './SnappingGuides'
 import { AvatarMesero } from './AvatarMesero'
-import { useMeserosActivos } from '@/hooks/useMeserosActivos'
+import {
+  useMeserosActivos,
+  useMeserosActivosOpcional,
+  MeseroActivo
+} from '@/hooks/useMeserosActivos'
 import { useEditorHistory } from '@/hooks/useEditorHistory'
 import { useEditorKeyboard } from '@/hooks/useEditorKeyboard'
 import { useToast } from '@/hooks/use-toast'
@@ -36,6 +40,7 @@ interface MapaMesasZoomProps {
   mesaSeleccionadaId?: string
   showGrid?: boolean
   meseroActualId?: string | null
+  meserosActivos?: MeseroActivo[]
 }
 
 export function MapaMesasZoom({
@@ -44,7 +49,8 @@ export function MapaMesasZoom({
   isEditing = false,
   mesaSeleccionadaId,
   showGrid: showGridProp = false,
-  meseroActualId = null
+  meseroActualId = null,
+  meserosActivos: meserosActivosProp
 }: MapaMesasZoomProps) {
   const [mesasDB, setMesasDB] = useState<Mesa[]>([])
   const [elementos, setElementos] = useState<any[]>([])
@@ -73,7 +79,11 @@ export function MapaMesasZoom({
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const { toast } = useToast()
-  const { meseros: meserosActivos } = useMeserosActivos()
+
+  // Solo se suscribe si el padre NO paso meserosActivos
+  const necesitaHook = !meserosActivosProp
+  const { meseros: meserosDelHook } = useMeserosActivosOpcional(necesitaHook)
+  const meserosActivos = meserosActivosProp || meserosDelHook
 
   const {
     state: mesas,
@@ -126,8 +136,11 @@ export function MapaMesasZoom({
 
   useEffect(() => {
     if (isEditing) return
+    const channelName = `mapa_zoom_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2)}`
     const channel = supabase
-      .channel('mapa_zoom_changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'mesas' },
@@ -546,7 +559,9 @@ export function MapaMesasZoom({
                 })}
 
                 {!isEditing &&
+                  Array.isArray(meserosActivos) &&
                   meserosActivos.map((mesero) => {
+                    if (!mesero?.mesa_atendiendo_id) return null
                     const mesaAtendiendo = mesas.find(
                       (m) => m.id === mesero.mesa_atendiendo_id
                     )
@@ -561,7 +576,8 @@ export function MapaMesasZoom({
                           mesaAtendiendo.mapa_ancho / 2
                         }
                         posicionY={
-                          mesaAtendiendo.mapa_y + mesaAtendiendo.mapa_alto / 2
+                          mesaAtendiendo.mapa_y +
+                          mesaAtendiendo.mapa_alto / 2
                         }
                       />
                     )
