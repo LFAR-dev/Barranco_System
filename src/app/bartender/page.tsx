@@ -54,6 +54,7 @@ export default function BartenderDashboard() {
 
   const [pedidos, setPedidos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+    const [loadingMerma, setLoadingMerma] = useState(false)
   const [isMermaOpen, setIsMermaOpen] = useState(false)
   const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
   const [mermaData, setMermaData] = useState({ producto: '', cantidad: 0, motivo: '' })
@@ -162,7 +163,7 @@ export default function BartenderDashboard() {
     }
   }
 
-  const handleMerma = async () => {
+    const handleMerma = async () => {
     if (!turnoActivo) {
       toast({
         title: 'No estas activo',
@@ -172,27 +173,58 @@ export default function BartenderDashboard() {
       return
     }
 
+    if (!mermaData.producto || mermaData.producto.trim() === '') {
+      toast({
+        title: 'Producto requerido',
+        description: 'Debes indicar que producto se perdio',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    if (!mermaData.cantidad || mermaData.cantidad <= 0) {
+      toast({
+        title: 'Cantidad invalida',
+        description: 'La cantidad debe ser mayor a cero',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    if (!mermaData.motivo || mermaData.motivo.trim() === '') {
+      toast({
+        title: 'Motivo requerido',
+        description: 'Debes indicar el motivo de la merma',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setLoadingMerma(true)
     try {
-      await wasteService.create({
+      const result = await wasteService.create({
         producto_id: mermaData.producto,
-        bartender_id: user?.id,
         cantidad: mermaData.cantidad,
         motivo: mermaData.motivo,
         jornada_id: jornadaId
       })
+      
       toast({
         title: 'Merma registrada',
-        description: 'La merma ha sido registrada',
+        description: `Se descontaron ${mermaData.cantidad} unidades. Valor perdido: $${result.valor_perdido.toFixed(2)}`,
         variant: 'success'
       })
       setIsMermaOpen(false)
       setMermaData({ producto: '', cantidad: 0, motivo: '' })
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error al registrar merma:', error)
       toast({
         title: 'Error',
-        description: 'No se pudo registrar la merma',
+        description: error.message || 'No se pudo registrar la merma',
         variant: 'destructive'
       })
+    } finally {
+      setLoadingMerma(false)
     }
   }
 
@@ -533,12 +565,19 @@ export default function BartenderDashboard() {
                 onChange={(e) => setMermaData({ ...mermaData, motivo: e.target.value })}
               />
             </div>
-            <Button
+                        <Button
               className="w-full bg-red-600 hover:bg-red-700"
               onClick={handleMerma}
-              disabled={!turnoActivo}
+              disabled={!turnoActivo || loadingMerma}
             >
-              Registrar Merma
+              {loadingMerma ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Registrando...
+                </>
+              ) : (
+                'Registrar Merma'
+              )}
             </Button>
           </div>
         </DialogContent>
