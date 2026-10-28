@@ -114,14 +114,19 @@ export function UserMenu({
     try {
       if (userData.rol === 'bartender') {
         const bartender = await userService.getBartenderByUsuarioId(userData.id)
-        if (bartender) await userService.uploadBartenderFoto(file, bartender.id, userData.id)
+        if (bartender) {
+          await userService.uploadBartenderFoto(file, bartender.id, userData.id)
+        }
       } else if (userData.rol === 'mesero') {
         const mesero = await userService.getMeseroByUsuarioId(userData.id)
-        if (mesero) await userService.uploadMeseroFoto(file, mesero.id, userData.id)
+        if (mesero) {
+          await userService.uploadMeseroFoto(file, mesero.id, userData.id)
+        }
       } else {
         await userService.uploadAdminFoto(file, userData.id)
       }
 
+      // Recargar para obtener la nueva URL
       await loadUserData()
       toast({
         title: 'Foto actualizada',
@@ -272,7 +277,7 @@ export function UserMenu({
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
 
-          {/* JORNADA — solo admin */}
+          {/* JORNADA - solo admin */}
           {esAdmin && (
             <>
               {jornada ? (
@@ -298,7 +303,6 @@ export function UserMenu({
                 </DropdownMenuItem>
               )}
 
-              {/* Gestionar personal — solo si jornada activa */}
               {jornada && (
                 <DropdownMenuItem
                   onClick={handleGestionPersonalClick}
@@ -314,7 +318,6 @@ export function UserMenu({
                 </DropdownMenuItem>
               )}
 
-              {/* Botón de Cierre Definitivo — solo admin, solo si jornada activa */}
               {jornada && onCerrarTurnoClick && (
                 <DropdownMenuItem
                   onClick={handleCerrarTurnoClick}
@@ -373,7 +376,7 @@ export function UserMenu({
               className="cursor-pointer text-red-600 hover:text-red-700 focus:text-red-700"
             >
               <LogOut className="mr-2 h-4 w-4" />
-              <span>Cerrar Sesión</span>
+              <span>Cerrar Sesion</span>
             </DropdownMenuItem>
           ) : (
             <DropdownMenuItem

@@ -402,48 +402,115 @@ export const userService = {
 
   async uploadBartenderFoto(file: File, bartenderId: string, usuarioId: string): Promise<string> {
     const supabase = createClient()
+    
+    if (!bartenderId || !usuarioId) {
+      throw new Error('IDs invalidos: bartenderId y usuarioId son requeridos')
+    }
+    
     const extension = file.name.split('.').pop()
-    const fileName = `${Date.now()}.${extension}`
+    const timestamp = Date.now()
+    const fileName = `${timestamp}.${extension}`
     const path = `bartenders/${bartenderId}/${fileName}`
+    
     const { error: uploadError } = await supabase.storage
       .from('barranco-images')
-      .upload(path, file, { cacheControl: '3600', upsert: true })
+      .upload(path, file, { 
+        cacheControl: '0',
+        upsert: true,
+        contentType: file.type
+      })
     if (uploadError) throw new Error(getErrorMessage(uploadError))
+    
     const { data: urlData } = supabase.storage.from('barranco-images').getPublicUrl(path)
-    const avatarUrl = urlData.publicUrl
-    await supabase.from('bartenders').update({ foto_url: avatarUrl }).eq('id', bartenderId)
-    await supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', usuarioId)
+    const avatarUrl = `${urlData.publicUrl}?v=${timestamp}`
+    
+    const [updateBartender, updateUsuario] = await Promise.all([
+      supabase.from('bartenders').update({ foto_url: avatarUrl }).eq('id', bartenderId),
+      supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', usuarioId)
+    ])
+    
+    if (updateBartender.error) {
+      console.error('[uploadBartenderFoto] Error bartenders:', updateBartender.error)
+    }
+    if (updateUsuario.error) {
+      console.error('[uploadBartenderFoto] Error usuarios:', updateUsuario.error)
+    }
+    
     return avatarUrl
   },
 
   async uploadMeseroFoto(file: File, meseroId: string, usuarioId: string): Promise<string> {
     const supabase = createClient()
+    
+    if (!meseroId || !usuarioId) {
+      throw new Error('IDs invalidos: meseroId y usuarioId son requeridos')
+    }
+    
     const extension = file.name.split('.').pop()
-    const fileName = `${Date.now()}.${extension}`
+    const timestamp = Date.now()
+    const fileName = `${timestamp}.${extension}`
     const path = `meseros/${meseroId}/${fileName}`
+    
     const { error: uploadError } = await supabase.storage
       .from('barranco-images')
-      .upload(path, file, { cacheControl: '3600', upsert: true })
+      .upload(path, file, { 
+        cacheControl: '0',
+        upsert: true,
+        contentType: file.type
+      })
     if (uploadError) throw new Error(getErrorMessage(uploadError))
+    
     const { data: urlData } = supabase.storage.from('barranco-images').getPublicUrl(path)
-    const avatarUrl = urlData.publicUrl
-    await supabase.from('meseros').update({ foto_url: avatarUrl }).eq('id', meseroId)
-    await supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', usuarioId)
+    const avatarUrl = `${urlData.publicUrl}?v=${timestamp}`
+    
+    const [updateMesero, updateUsuario] = await Promise.all([
+      supabase.from('meseros').update({ foto_url: avatarUrl }).eq('id', meseroId),
+      supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', usuarioId)
+    ])
+    
+    if (updateMesero.error) {
+      console.error('[uploadMeseroFoto] Error meseros:', updateMesero.error)
+    }
+    if (updateUsuario.error) {
+      console.error('[uploadMeseroFoto] Error usuarios:', updateUsuario.error)
+    }
+    
     return avatarUrl
   },
 
   async uploadAdminFoto(file: File, usuarioId: string): Promise<string> {
     const supabase = createClient()
+    
+    if (!usuarioId) {
+      throw new Error('usuarioId es requerido')
+    }
+    
     const extension = file.name.split('.').pop()
-    const fileName = `${Date.now()}.${extension}`
+    const timestamp = Date.now()
+    const fileName = `${timestamp}.${extension}`
     const path = `admins/${usuarioId}/${fileName}`
+    
     const { error: uploadError } = await supabase.storage
       .from('barranco-images')
-      .upload(path, file, { cacheControl: '3600', upsert: true })
+      .upload(path, file, { 
+        cacheControl: '0',
+        upsert: true,
+        contentType: file.type
+      })
     if (uploadError) throw new Error(getErrorMessage(uploadError))
+    
     const { data: urlData } = supabase.storage.from('barranco-images').getPublicUrl(path)
-    const avatarUrl = urlData.publicUrl
-    await supabase.from('usuarios').update({ avatar_url: avatarUrl }).eq('id', usuarioId)
+    const avatarUrl = `${urlData.publicUrl}?v=${timestamp}`
+    
+    const { error: updateError } = await supabase
+      .from('usuarios')
+      .update({ avatar_url: avatarUrl })
+      .eq('id', usuarioId)
+    
+    if (updateError) {
+      console.error('[uploadAdminFoto] Error usuarios:', updateError)
+    }
+    
     return avatarUrl
   },
 
