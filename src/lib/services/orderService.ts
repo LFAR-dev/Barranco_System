@@ -219,6 +219,20 @@ export const orderService = {
         console.error('No se pudo notificar ayuda al mesero:', e)
       }
     }
+    // Descontar inventario automaticamente (best-effort)
+    try {
+      const { data: invResult, error: invError } = await supabase.rpc(
+        'descontar_inventario_por_pedido',
+        { p_pedido_id: data.id }
+      )
+      if (invError) {
+        console.error('[createOrder] Error al descontar inventario:', invError)
+      } else {
+        console.log('[createOrder] Inventario descontado:', invResult)
+      }
+    } catch (e) {
+      console.error('[createOrder] Excepcion al descontar inventario:', e)
+    }
 
     return data as Order
   },
@@ -276,7 +290,7 @@ export const orderService = {
     return { can: true }
   },
 
-  async cancelOrder(id: string, motivo: string, usuarioId: string): Promise<void> {
+   async cancelOrder(id: string, motivo: string, usuarioId: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase
       .from('pedidos')
@@ -289,7 +303,23 @@ export const orderService = {
       })
       .eq('id', id)
     if (error) throw new Error('No se pudo cancelar el pedido')
+
+    // Revertir inventario automaticamente (best-effort)
+    try {
+      const { data: revResult, error: revError } = await supabase.rpc(
+        'revertir_inventario_por_pedido',
+        { p_pedido_id: id }
+      )
+      if (revError) {
+        console.error('[cancelOrder] Error al revertir inventario:', revError)
+      } else {
+        console.log('[cancelOrder] Inventario revertido:', revResult)
+      }
+    } catch (e) {
+      console.error('[cancelOrder] Excepcion al revertir inventario:', e)
+    }
   },
+   
 
   /**
    * Devuelve todas las ayudas registradas en una jornada.
