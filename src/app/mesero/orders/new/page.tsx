@@ -3,11 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Minus, Trash2, Coffee, Wine, Beer, Sparkles } from 'lucide-react'
+import { ArrowLeft, Plus, Minus, Trash2, Coffee, Wine, Sparkles } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
@@ -17,6 +15,7 @@ import { recipeService, Recipe } from '@/lib/services/recipeService'
 import { orderService, OrderItem } from '@/lib/services/orderService'
 import { BotonReceta } from '@/components/shared/BotonReceta'
 import { cuentaService } from '@/lib/services/cuentaService'
+import { jornadaService } from '@/lib/services/jornadaService'
 
 interface OrderItemWithStock extends OrderItem {
   tiene_stock?: boolean
@@ -37,12 +36,13 @@ interface Producto {
 export default function NewOrderPage() {
   const { user } = useAuth()
   const router = useRouter()
-const searchParams = useSearchParams()
-const ayudando = searchParams.get('ayudando') === 'true'
+  const searchParams = useSearchParams()
+  const ayudando = searchParams.get('ayudando') === 'true'
   const { toast } = useToast()
   const supabase = createClient()
-  
+
   const mesaId = searchParams.get('mesa')
+  const cuentaId = searchParams.get('cuenta')
   const [mesaInfo, setMesaInfo] = useState<any>(null)
   const [recetas, setRecetas] = useState<Recipe[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
@@ -72,7 +72,7 @@ const ayudando = searchParams.get('ayudando') === 'true'
       console.error('Error fetching mesa:', error)
       toast({
         title: 'Error',
-        description: 'No se pudo cargar la información de la mesa',
+        description: 'No se pudo cargar la informacion de la mesa',
         variant: 'destructive'
       })
     }
@@ -113,34 +113,42 @@ const ayudando = searchParams.get('ayudando') === 'true'
       stock_disponible: item.stock_actual || 0
     }
 
-    const existing = cart.find(c => c.receta_id === item.id && c.tipo === tipo)
+    const existing = cart.find((c) => c.receta_id === item.id && c.tipo === tipo)
     if (existing) {
-      if (existing.stock_disponible !== undefined && existing.cantidad >= existing.stock_disponible) {
+      if (
+        existing.stock_disponible !== undefined &&
+        existing.cantidad >= existing.stock_disponible
+      ) {
         toast({
-          title: '⚠️ Stock insuficiente',
+          title: 'Stock insuficiente',
           description: `Solo hay ${existing.stock_disponible} unidades disponibles`,
           variant: 'destructive'
         })
         return
       }
-      setCart(cart.map(c =>
-        c.receta_id === item.id && c.tipo === tipo
-          ? { ...c, cantidad: c.cantidad + 1 }
-          : c
-      ))
+      setCart(
+        cart.map((c) =>
+          c.receta_id === item.id && c.tipo === tipo
+            ? { ...c, cantidad: c.cantidad + 1 }
+            : c
+        )
+      )
     } else {
       setCart([...cart, cartItem])
     }
 
     toast({
-      title: '✅ Agregado',
+      title: 'Agregado',
       description: `${item.nombre} agregado al pedido`,
-      variant: 'success'
+      variant: 'success',
+      duration: 2000
     })
   }
 
   const removeFromCart = (receta_id: string, tipo: string) => {
-    setCart(cart.filter(item => !(item.receta_id === receta_id && item.tipo === tipo)))
+    setCart(
+      cart.filter((item) => !(item.receta_id === receta_id && item.tipo === tipo))
+    )
   }
 
   const updateQuantity = (receta_id: string, tipo: string, cantidad: number) => {
@@ -149,26 +157,32 @@ const ayudando = searchParams.get('ayudando') === 'true'
       return
     }
 
-    const item = cart.find(c => c.receta_id === receta_id && c.tipo === tipo)
-    if (item && item.stock_disponible !== undefined && cantidad > item.stock_disponible) {
+    const item = cart.find((c) => c.receta_id === receta_id && c.tipo === tipo)
+    if (
+      item &&
+      item.stock_disponible !== undefined &&
+      cantidad > item.stock_disponible
+    ) {
       toast({
-        title: '⚠️ Stock insuficiente',
+        title: 'Stock insuficiente',
         description: `Solo hay ${item.stock_disponible} unidades disponibles`,
         variant: 'destructive'
       })
       return
     }
 
-    setCart(cart.map(item =>
-      item.receta_id === receta_id && item.tipo === tipo
-        ? { ...item, cantidad }
-        : item
-    ))
+    setCart(
+      cart.map((item) =>
+        item.receta_id === receta_id && item.tipo === tipo
+          ? { ...item, cantidad }
+          : item
+      )
+    )
   }
 
   const total = cart.reduce((sum, item) => sum + item.precio * item.cantidad, 0)
 
-    const handleSubmit = async () => {
+  const handleSubmit = async () => {
     if (!user) {
       toast({
         title: 'Error',
@@ -190,7 +204,7 @@ const ayudando = searchParams.get('ayudando') === 'true'
     if (!mesaId) {
       toast({
         title: 'Error',
-        description: 'No se seleccionó una mesa',
+        description: 'No se selecciono una mesa',
         variant: 'destructive'
       })
       return
@@ -198,82 +212,54 @@ const ayudando = searchParams.get('ayudando') === 'true'
 
     setLoading(true)
     try {
-      // 1. Verificar si la mesa tiene cuenta abierta
-      const cuentaActiva = await cuentaService.getCuentaActiva(mesaId)
+      // 1. Verificar jornada activa (CRITICO para que el pedido no quede huerfano)
+      const jornadaId = await jornadaService.getJornadaActualId()
 
-      // 2. Construir el pedido
-      const pedidoData: any = {
+      if (!jornadaId) {
+        throw new Error(
+          'No hay jornada activa. El administrador debe abrir una jornada.'
+        )
+      }
+
+      // 2. Verificar si la mesa tiene cuenta abierta
+      const cuentaActiva = cuentaId
+        ? { id: cuentaId }
+        : await cuentaService.getCuentaActiva(mesaId)
+
+      // 3. Construir items normalizados
+      const items: OrderItem[] = cart.map((item) => ({
+        receta_id: item.receta_id,
+        cantidad: item.cantidad,
+        nombre: item.nombre,
+        precio: item.precio,
+        tipo: item.tipo
+      }))
+
+      // 4. Crear el pedido via orderService (que maneja bartender, inventario, etc)
+      const nuevoPedido = await orderService.createOrder({
         mesero_id: user.id,
         mesa: mesaInfo?.numero || 'N/A',
-        items: cart.map(item => ({
-          receta_id: item.receta_id,
-          cantidad: item.cantidad,
-          nombre: item.nombre,
-          precio: item.precio,
-          tipo: item.tipo
-        })),
+        mesaId: mesaId,
+        items,
         total,
-        estado: 'pendiente',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
+        cuentaAbiertaId: cuentaActiva?.id || null,
+        jornadaId: jornadaId,
+        ayudadoPorId: ayudando ? user.id : undefined
+      })
 
-      // Si hay cuenta abierta, vincular
-      if (cuentaActiva) {
-        pedidoData.cuenta_abierta_id = cuentaActiva.id
-      }
-            if (ayudando) {
-        pedidoData.ayudado_por_id = user.id
-      }
-
-      // 3. Insertar en pedidos
-      const { data, error } = await supabase
-        .from('pedidos')
-        .insert([pedidoData])
-        .select()
-        .single()
-              // Si es ayuda, notificar al mesero titular
-      if (ayudando && data.mesero_id !== user.id) {
+      // 5. Si hay cuenta, vincular y recalcular total
+      if (cuentaActiva?.id) {
         try {
-          const { data: titular } = await supabase
-            .from('usuarios')
-            .select('nombre, apellido')
-            .eq('id', data.mesero_id)
-            .maybeSingle()
-
-          await supabase.from('notificaciones_mesero').insert([
-            {
-              mesero_id: data.mesero_id,
-              pedido_id: data.id,
-              tipo: 'ayuda_mesero',
-              mensaje: `${user.nombre || 'Un companero'} te ayudo en Mesa ${mesaInfo?.numero || 'N/A'} con ${cart.length} items`,
-              jornada_id: data.jornada_id
-            }
-          ])
+          await cuentaService.vincularPedidoACuenta(
+            nuevoPedido.id,
+            cuentaActiva.id
+          )
         } catch (e) {
-          console.error('No se pudo notificar ayuda:', e)
+          console.error('Error al vincular pedido a cuenta:', e)
         }
       }
 
-      if (error) throw error
-
-      // 4. Si hay cuenta, recalcular el total
-      if (cuentaActiva) {
-        await cuentaService.vincularPedidoACuenta(data.id, cuentaActiva.id)
-      }
-
-      // 5. Notificar al bartender
-      await supabase
-        .from('notificaciones_bartender')
-        .insert([{
-          bartender_id: null,
-          pedido_id: data.id,
-          mensaje: `Nuevo pedido - Mesa ${mesaInfo?.numero || 'N/A'} - ${cart.length} items`,
-          tipo: 'nuevo_pedido',
-          leida: false
-        }])
-
-          toast({
+      toast({
         title: ayudando ? 'Ayuda registrada' : 'Pedido enviado',
         description: ayudando
           ? `Pedido agregado en ayuda a la mesa ${mesaInfo?.numero || 'N/A'}`
@@ -281,9 +267,7 @@ const ayudando = searchParams.get('ayudando') === 'true'
         variant: 'success'
       })
 
-      // 7. Redirigir
       router.push('/mesero/orders')
-
     } catch (error: any) {
       console.error('Error creating order:', error)
       toast({
@@ -300,8 +284,12 @@ const ayudando = searchParams.get('ayudando') === 'true'
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">No hay mesa seleccionada</h2>
-          <p className="text-gray-500 mt-2">Por favor, selecciona una mesa primero</p>
+          <h2 className="text-2xl font-bold text-gray-900">
+            No hay mesa seleccionada
+          </h2>
+          <p className="text-gray-500 mt-2">
+            Por favor, selecciona una mesa primero
+          </p>
           <Link href="/mesero/orders">
             <Button className="mt-4 bg-orange-600 hover:bg-orange-700">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -328,7 +316,8 @@ const ayudando = searchParams.get('ayudando') === 'true'
               Mesa {mesaInfo?.numero || 'N/A'}
             </h1>
             <p className="text-sm text-gray-500">
-              {mesaInfo?.ubicacion || 'Sin ubicación'} • Capacidad: {mesaInfo?.capacidad || 0} personas
+              {mesaInfo?.ubicacion || 'Sin ubicacion'} - Capacidad:{' '}
+              {mesaInfo?.capacidad || 0} personas
             </p>
           </div>
           <Badge className="ml-auto bg-green-100 text-green-700">
@@ -341,7 +330,10 @@ const ayudando = searchParams.get('ayudando') === 'true'
           <div className="lg:col-span-2">
             <Card>
               <CardContent className="p-4">
-                <Tabs defaultValue="preparadas" onValueChange={(v) => setTipoPedido(v as any)}>
+                <Tabs
+                  defaultValue="preparadas"
+                  onValueChange={(v) => setTipoPedido(v as any)}
+                >
                   <TabsList className="grid w-full grid-cols-3 mb-4">
                     <TabsTrigger value="preparadas">
                       <Coffee className="h-4 w-4 mr-2" />
@@ -359,7 +351,7 @@ const ayudando = searchParams.get('ayudando') === 'true'
 
                   <TabsContent value="preparadas" className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
-                      {recetas.map(recipe => (
+                      {recetas.map((recipe) => (
                         <div key={recipe.id} className="flex items-center gap-1">
                           <Button
                             variant="outline"
@@ -367,12 +359,16 @@ const ayudando = searchParams.get('ayudando') === 'true'
                             onClick={() => addToCart(recipe, 'receta')}
                           >
                             <div className="min-w-0">
-                              <p className="font-medium text-sm truncate">{recipe.nombre}</p>
-                              <p className="text-xs text-gray-500">${recipe.precio_venta}</p>
+                              <p className="font-medium text-sm truncate">
+                                {recipe.nombre}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                ${recipe.precio_venta}
+                              </p>
                             </div>
                           </Button>
-                          <BotonReceta 
-                            recetaId={recipe.id} 
+                          <BotonReceta
+                            recetaId={recipe.id}
                             recetaNombre={recipe.nombre}
                             variant="icon"
                             size="sm"
@@ -385,27 +381,36 @@ const ayudando = searchParams.get('ayudando') === 'true'
                   <TabsContent value="botellas" className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       {productos
-                        .filter(p => p.es_bebida_principal && p.stock_actual > 0)
-                        .map(producto => (
+                        .filter((p) => p.es_bebida_principal && p.stock_actual > 0)
+                        .map((producto) => (
                           <div key={producto.id} className="flex items-center gap-1">
                             <Button
                               variant="outline"
                               className="justify-start h-auto py-2 px-3 text-left flex-1 min-w-0"
-                              onClick={() => addToCart({
-                                id: producto.id,
-                                nombre: producto.nombre,
-                                precio_venta: producto.precio_venta,
-                                stock_actual: producto.stock_actual
-                              }, 'producto')}
+                              onClick={() =>
+                                addToCart(
+                                  {
+                                    id: producto.id,
+                                    nombre: producto.nombre,
+                                    precio_venta: producto.precio_venta,
+                                    stock_actual: producto.stock_actual
+                                  },
+                                  'producto'
+                                )
+                              }
                             >
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className="font-medium text-sm truncate">{producto.nombre}</p>
+                                  <p className="font-medium text-sm truncate">
+                                    {producto.nombre}
+                                  </p>
                                   <Badge className="text-xs bg-green-100 text-green-700 flex-shrink-0">
                                     {producto.stock_actual} disp.
                                   </Badge>
                                 </div>
-                                <p className="text-xs text-gray-500">${producto.precio_venta}</p>
+                                <p className="text-xs text-gray-500">
+                                  ${producto.precio_venta}
+                                </p>
                               </div>
                             </Button>
                           </div>
@@ -416,27 +421,36 @@ const ayudando = searchParams.get('ayudando') === 'true'
                   <TabsContent value="servicio" className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       {productos
-                        .filter(p => p.es_insumo && p.stock_actual > 0)
-                        .map(producto => (
+                        .filter((p) => p.es_insumo && p.stock_actual > 0)
+                        .map((producto) => (
                           <div key={producto.id} className="flex items-center gap-1">
                             <Button
                               variant="outline"
                               className="justify-start h-auto py-2 px-3 text-left flex-1 min-w-0"
-                              onClick={() => addToCart({
-                                id: producto.id,
-                                nombre: producto.nombre,
-                                precio_venta: producto.precio_venta || 0,
-                                stock_actual: producto.stock_actual
-                              }, 'producto')}
+                              onClick={() =>
+                                addToCart(
+                                  {
+                                    id: producto.id,
+                                    nombre: producto.nombre,
+                                    precio_venta: producto.precio_venta || 0,
+                                    stock_actual: producto.stock_actual
+                                  },
+                                  'producto'
+                                )
+                              }
                             >
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className="font-medium text-sm truncate">{producto.nombre}</p>
+                                  <p className="font-medium text-sm truncate">
+                                    {producto.nombre}
+                                  </p>
                                   <Badge className="text-xs bg-green-100 text-green-700 flex-shrink-0">
                                     {producto.stock_actual} disp.
                                   </Badge>
                                 </div>
-                                <p className="text-xs text-gray-500">${producto.precio_venta || 0}</p>
+                                <p className="text-xs text-gray-500">
+                                  ${producto.precio_venta || 0}
+                                </p>
                               </div>
                             </Button>
                           </div>
@@ -451,17 +465,22 @@ const ayudando = searchParams.get('ayudando') === 'true'
           <div>
             <Card className="sticky top-20">
               <CardContent className="p-4">
-                <h2 className="font-bold text-lg mb-4">🛒 Pedido</h2>
+                <h2 className="font-bold text-lg mb-4">Pedido</h2>
                 <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                  {cart.map(item => (
-                    <div key={`${item.receta_id}-${item.tipo}`} className="flex items-center justify-between border-b pb-2">
+                  {cart.map((item) => (
+                    <div
+                      key={`${item.receta_id}-${item.tipo}`}
+                      className="flex items-center justify-between border-b pb-2"
+                    >
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{item.nombre}</p>
+                        <p className="font-medium text-sm truncate">
+                          {item.nombre}
+                        </p>
                         <div className="flex items-center gap-2">
                           <p className="text-xs text-gray-500">${item.precio}</p>
                           {item.tipo && (
                             <Badge className="text-xs bg-gray-100 text-gray-500">
-                              {item.tipo === 'receta' ? '🍸' : '🍾'}
+                              {item.tipo === 'receta' ? 'Receta' : 'Botella'}
                             </Badge>
                           )}
                           {item.stock_disponible !== undefined && (
@@ -472,28 +491,44 @@ const ayudando = searchParams.get('ayudando') === 'true'
                         </div>
                       </div>
                       <div className="flex items-center gap-1 ml-2">
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           className="h-7 w-7 p-0"
-                          onClick={() => updateQuantity(item.receta_id, item.tipo || 'receta', item.cantidad - 1)}
+                          onClick={() =>
+                            updateQuantity(
+                              item.receta_id,
+                              item.tipo || 'receta',
+                              item.cantidad - 1
+                            )
+                          }
                         >
                           <Minus className="h-3 w-3" />
                         </Button>
-                        <span className="w-6 text-center text-sm">{item.cantidad}</span>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
+                        <span className="w-6 text-center text-sm">
+                          {item.cantidad}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           className="h-7 w-7 p-0"
-                          onClick={() => updateQuantity(item.receta_id, item.tipo || 'receta', item.cantidad + 1)}
+                          onClick={() =>
+                            updateQuantity(
+                              item.receta_id,
+                              item.tipo || 'receta',
+                              item.cantidad + 1
+                            )
+                          }
                         >
                           <Plus className="h-3 w-3" />
                         </Button>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           className="h-7 w-7 p-0 text-red-500"
-                          onClick={() => removeFromCart(item.receta_id, item.tipo || 'receta')}
+                          onClick={() =>
+                            removeFromCart(item.receta_id, item.tipo || 'receta')
+                          }
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -511,9 +546,9 @@ const ayudando = searchParams.get('ayudando') === 'true'
                     <span>Total:</span>
                     <span className="text-orange-600">${total.toFixed(2)}</span>
                   </div>
-                  <Button 
-                    className="w-full mt-4 bg-orange-600 hover:bg-orange-700 text-white" 
-                    onClick={handleSubmit} 
+                  <Button
+                    className="w-full mt-4 bg-orange-600 hover:bg-orange-700 text-white"
+                    onClick={handleSubmit}
                     disabled={loading || cart.length === 0}
                   >
                     {loading ? (

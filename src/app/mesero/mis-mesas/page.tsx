@@ -28,30 +28,36 @@ export default function MisMesasPage() {
   const [cuentaSeleccionada, setCuentaSeleccionada] = useState<CuentaConPedidos | null>(null)
   const [isPedirCuentaOpen, setIsPedirCuentaOpen] = useState(false)
 
+  const userId = user?.id
+
   const cargar = useCallback(async () => {
-    if (!user?.id) return
+    if (!userId) {
+      setCuentas([])
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
-      const basicas = await cuentaService.getCuentasDelMesero(user.id)
+      const basicas = await cuentaService.getCuentasDelMesero(userId)
       const conPedidos = await Promise.all(
         (basicas || []).map((c) => cuentaService.getCuentaConPedidos(c.id))
       )
       setCuentas(conPedidos.filter(Boolean) as CuentaConPedidos[])
     } catch (error) {
       console.error('Error al cargar cuentas:', error)
-      toast({
-        title: 'Error',
-        description: 'No se pudieron cargar tus cuentas',
-        variant: 'destructive'
-      })
+      setCuentas([])
     } finally {
       setLoading(false)
     }
-  }, [user?.id, toast])
+  }, [userId])
 
   useEffect(() => {
-    if (!authLoading && user) cargar()
-  }, [authLoading, user, cargar])
+    if (!authLoading) {
+      cargar()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, userId])
 
   const handleAgregarProductos = (cuenta: CuentaConPedidos) => {
     if (!cuenta.mesa_id) {
@@ -143,7 +149,9 @@ export default function MisMesasPage() {
           <Card>
             <CardContent className="p-12 text-center">
               <Receipt className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <p className="font-medium text-gray-700">No tienes mesas abiertas</p>
+              <p className="font-medium text-gray-700">
+                No tienes mesas abiertas
+              </p>
               <p className="text-xs text-gray-500 mt-1">
                 Abre una cuenta desde el mapa de mesas para empezar a atender
               </p>
@@ -229,12 +237,18 @@ export default function MisMesasPage() {
                             <div key={p.id} className="text-xs text-gray-600">
                               {Array.isArray(p.items) &&
                                 p.items.map((it: any, i: number) => (
-                                  <div key={i} className="flex justify-between">
+                                  <div
+                                    key={i}
+                                    className="flex justify-between"
+                                  >
                                     <span className="truncate">
                                       {it.nombre} x{it.cantidad}
                                     </span>
                                     <span className="text-gray-500 shrink-0 ml-2">
-                                      ${((it.precio || 0) * (it.cantidad || 0)).toFixed(2)}
+                                      $
+                                      {(
+                                        (it.precio || 0) * (it.cantidad || 0)
+                                      ).toFixed(2)}
                                     </span>
                                   </div>
                                 ))}

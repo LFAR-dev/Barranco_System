@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { turnoService } from '@/lib/services/turnoService'
 
 interface UseTurnoActivoReturn {
   activo: boolean | null
@@ -12,13 +11,13 @@ interface UseTurnoActivoReturn {
 }
 
 /**
- * Hook que verifica si el usuario actual está activo en el turno.
- * - activo = null: cargando
- * - activo = true: está activo en el turno
- * - activo = false: NO está activo
- * 
- * Solo aplica para bartender, mesero y caja.
- * Admin siempre tiene acceso (devuelve activo = true).
+ * Hook que verifica si el usuario actual esta activo en el turno.
+ *
+ * activo = null: cargando
+ * activo = true: esta activo
+ * activo = false: NO esta activo
+ *
+ * Admin siempre activo. Operativos consultan turno_trabajadores.
  */
 export function useTurnoActivo(): UseTurnoActivoReturn {
   const [activo, setActivo] = useState<boolean | null>(null)
@@ -29,7 +28,10 @@ export function useTurnoActivo(): UseTurnoActivoReturn {
   const verificar = async () => {
     setLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      // getSession es mas rapido que getUser (usa cache local)
+      const { data: sessionData } = await supabase.auth.getSession()
+      const user = sessionData?.session?.user
+
       if (!user) {
         setActivo(false)
         setJornadaId(null)
@@ -43,10 +45,9 @@ export function useTurnoActivo(): UseTurnoActivoReturn {
         .eq('id', user.id)
         .maybeSingle()
 
-      // Admin siempre está activo
+      // Admin siempre esta activo
       if (userData?.rol === 'admin') {
         setActivo(true)
-        // Obtener jornada activa para info
         const { data: jornada } = await supabase
           .from('jornadas')
           .select('id')
@@ -56,7 +57,7 @@ export function useTurnoActivo(): UseTurnoActivoReturn {
         return
       }
 
-      // Obtener jornada activa
+      // Operativos: obtener jornada activa
       const { data: jornada } = await supabase
         .from('jornadas')
         .select('id')
@@ -71,13 +72,17 @@ export function useTurnoActivo(): UseTurnoActivoReturn {
 
       setJornadaId(jornada.id)
 
-      // Ver si está en turno_trabajadores
-      const { data: registro } = await supabase
+      // Ver si esta en turno_trabajadores
+      const { data: registro, error: turnoError } = await supabase
         .from('turno_trabajadores')
         .select('activo_en_turno')
         .eq('jornada_id', jornada.id)
         .eq('usuario_id', user.id)
         .maybeSingle()
+
+      if (turnoError) {
+        console.error('[useTurnoActivo] Error consultando turno:', turnoError)
+      }
 
       setActivo(registro?.activo_en_turno === true)
     } catch (error) {
