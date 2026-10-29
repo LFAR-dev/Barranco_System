@@ -54,6 +54,9 @@ export function useNotificacionesRealtime({
   const supabase = createClient()
   const channelRef = useRef<any>(null)
 
+  // Verificar si el filtro es valido (no vacio, no null)
+  const filtroValido = !filtro || (filtro.valor && filtro.valor.trim() !== '')
+
   useEffect(() => {
     setIsMounted(true)
   }, [])
@@ -87,6 +90,14 @@ export function useNotificacionesRealtime({
   )
 
   const cargar = useCallback(async () => {
+    // Si el filtro esta vacio, no ejecutar query (evita error de UUID)
+    if (!filtroValido) {
+      setNotificaciones([])
+      setUnreadCount(0)
+      setLoading(false)
+      return
+    }
+
     try {
       let query = supabase
         .from(tabla)
@@ -94,7 +105,7 @@ export function useNotificacionesRealtime({
         .order('created_at', { ascending: false })
         .limit(limite)
 
-      if (filtro) {
+      if (filtro && filtro.valor) {
         query = query.eq(filtro.campo, filtro.valor)
       }
 
@@ -124,7 +135,7 @@ export function useNotificacionesRealtime({
     } finally {
       setLoading(false)
     }
-  }, [supabase, tabla, filtro, limite, jornadaId])
+  }, [supabase, tabla, filtro, filtroValido, limite, jornadaId])
 
   useEffect(() => {
     if (!isMounted) return
@@ -146,7 +157,7 @@ export function useNotificacionesRealtime({
         (payload) => {
           const nueva = payload.new as NotificacionRow
 
-          if (filtro && nueva[filtro.campo] !== filtro.valor) {
+          if (filtro && filtro.valor && nueva[filtro.campo] !== filtro.valor) {
             return
           }
 
@@ -181,7 +192,7 @@ export function useNotificacionesRealtime({
         },
         (payload) => {
           const actualizada = payload.new as NotificacionRow
-          if (filtro && actualizada[filtro.campo] !== filtro.valor) return
+          if (filtro && filtro.valor && actualizada[filtro.campo] !== filtro.valor) return
           if (jornadaId && actualizada.jornada_id !== jornadaId) return
 
           setNotificaciones((prev) =>
@@ -236,7 +247,7 @@ export function useNotificacionesRealtime({
         .update({ leida: true })
         .eq('leida', false)
 
-      if (filtro) {
+      if (filtro && filtro.valor) {
         query = query.eq(filtro.campo, filtro.valor)
       }
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   X, Users, Plus, Receipt, Clock, CheckCircle,
-  UserCircle, AlertCircle, Loader2, HeartHandshake
+  UserCircle, AlertCircle, Loader2, HeartHandshake, Utensils
 } from 'lucide-react'
 import {
   Dialog,
@@ -85,19 +85,34 @@ export function MesaAccionesPanel({
     }
   }
 
-  const handleAbrirCuenta = async () => {
+  // Nuevo flujo: Tomar pedido = abrir cuenta + ocupar mesa + ir a tomar pedido
+  const handleTomarPedido = async () => {
     if (!mesa) return
     setLoading(true)
     try {
-      await cuentaService.abrirCuenta(mesa.id, usuarioId, comensales)
+      // 1. Abrir la cuenta (esto ocupa la mesa)
+      const nuevaCuenta = await cuentaService.abrirCuenta(
+        mesa.id,
+        usuarioId,
+        comensales
+      )
+
       toast({
-        title: 'Cuenta abierta',
-        description: `Mesa ${mesa.numero} lista para tomar pedidos`,
-        variant: 'success'
+        title: 'Mesa ocupada',
+        description: `Mesa ${mesa.numero} lista para tomar pedido`,
+        variant: 'success',
+        duration: 3000
       })
+
       onSuccess?.()
       onClose()
+
+      // 2. Navegar a tomar el pedido
+      router.push(
+        `/mesero/orders/new?mesa=${mesa.id}&cuenta=${nuevaCuenta.id}`
+      )
     } catch (error: any) {
+      console.error('Error al abrir cuenta:', error)
       toast({
         title: 'Error',
         description: error.message || 'No se pudo abrir la cuenta',
@@ -108,15 +123,27 @@ export function MesaAccionesPanel({
     }
   }
 
-  const handleIrATomarPedido = () => {
+  const handleAgregarACuenta = () => {
     if (!mesa) return
-    router.push(`/mesero/orders/new?mesa=${mesa.id}`)
+    if (cuenta) {
+      router.push(
+        `/mesero/orders/new?mesa=${mesa.id}&cuenta=${cuenta.id}`
+      )
+    } else {
+      router.push(`/mesero/orders/new?mesa=${mesa.id}`)
+    }
     onClose()
   }
 
   const handleIrAAyudar = () => {
     if (!mesa) return
-    router.push(`/mesero/orders/new?mesa=${mesa.id}&ayudando=true`)
+    if (cuenta) {
+      router.push(
+        `/mesero/orders/new?mesa=${mesa.id}&cuenta=${cuenta.id}&ayudando=true`
+      )
+    } else {
+      router.push(`/mesero/orders/new?mesa=${mesa.id}&ayudando=true`)
+    }
     onClose()
   }
 
@@ -215,6 +242,7 @@ export function MesaAccionesPanel({
         </DialogHeader>
 
         <div className="p-4 space-y-4">
+          {/* Info basica */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-gray-50 rounded-lg p-2.5">
               <p className="text-[10px] sm:text-xs text-gray-500 flex items-center gap-1">
@@ -245,6 +273,7 @@ export function MesaAccionesPanel({
             )}
           </div>
 
+          {/* Mesero asignado */}
           {mesa.mesero && (
             <div
               className={`rounded-lg p-2.5 border ${
@@ -265,12 +294,14 @@ export function MesaAccionesPanel({
             </div>
           )}
 
+          {/* Cargando cuenta */}
           {cargandoCuenta && (
             <div className="flex items-center justify-center py-2">
               <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
             </div>
           )}
 
+          {/* Cuenta activa */}
           {cuenta && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
               <div className="flex items-center justify-between mb-1">
@@ -282,14 +313,17 @@ export function MesaAccionesPanel({
                 </Badge>
               </div>
               <p className="text-lg font-bold text-amber-900">
-                ${cuenta.total_actual.toFixed(2)}
+                ${Number(cuenta.total_actual || 0).toFixed(2)}
               </p>
             </div>
           )}
 
+          {/* Formulario comensales para tomar pedido */}
           {modoAbrirCuenta && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
-              <Label className="text-xs">Numero de comensales</Label>
+              <Label className="text-xs font-semibold">
+                Numero de comensales
+              </Label>
               <Input
                 type="number"
                 min="1"
@@ -298,27 +332,39 @@ export function MesaAccionesPanel({
                 onChange={(e) => setComensales(parseInt(e.target.value) || 1)}
                 className="bg-white"
               />
+              <p className="text-[10px] text-blue-700">
+                La mesa se ocupara automaticamente al tomar el pedido
+              </p>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setModoAbrirCuenta(false)}
                   className="flex-1"
+                  disabled={loading}
                 >
                   Cancelar
                 </Button>
                 <Button
                   size="sm"
-                  onClick={handleAbrirCuenta}
+                  onClick={handleTomarPedido}
                   disabled={loading}
                   className="flex-1 bg-blue-600 hover:bg-blue-700"
                 >
-                  {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Abrir'}
+                  {loading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <Utensils className="h-3 w-3 mr-1" />
+                      Tomar pedido
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
           )}
 
+          {/* Modo ayuda */}
           {modoAyuda && (
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
               <div className="flex items-start gap-2">
@@ -329,8 +375,7 @@ export function MesaAccionesPanel({
                   </p>
                   <p className="text-[10px] text-purple-700 mt-1">
                     El pedido se agregara a la cuenta de la mesa. Tu apareceras
-                    como quien ayudo, y {mesa.mesero?.nombre} recibira una
-                    notificacion.
+                    como quien ayudo.
                   </p>
                 </div>
               </div>
@@ -354,35 +399,28 @@ export function MesaAccionesPanel({
             </div>
           )}
 
+          {/* Acciones segun estado */}
           <div className="space-y-2 pt-3 border-t">
+            {/* MESA DISPONIBLE: solo 1 boton "Tomar pedido" */}
             {estaDisponible && !modoAbrirCuenta && (
-              <>
-                <Button
-                  onClick={() => setModoAbrirCuenta(true)}
-                  className="w-full bg-blue-600 hover:bg-blue-700"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Abrir cuenta
-                </Button>
-                <Button
-                  onClick={handleIrATomarPedido}
-                  variant="outline"
-                  className="w-full"
-                >
-                  <Receipt className="h-4 w-4 mr-2" />
-                  Ir directo a tomar pedido
-                </Button>
-              </>
+              <Button
+                onClick={() => setModoAbrirCuenta(true)}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-12 text-base"
+              >
+                <Utensils className="h-5 w-5 mr-2" />
+                Tomar pedido
+              </Button>
             )}
 
+            {/* MESA OCUPADA PROPIA: agregar + pedir cuenta */}
             {estaOcupada && esMiMesa && (
               <>
                 <Button
-                  onClick={handleIrATomarPedido}
+                  onClick={handleAgregarACuenta}
                   className="w-full bg-emerald-600 hover:bg-emerald-700"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Agregar pedido
+                  Agregar a cuenta
                 </Button>
                 <Button
                   onClick={handleSolicitarCuenta}
@@ -391,7 +429,7 @@ export function MesaAccionesPanel({
                   className="w-full text-amber-700 border-amber-300 hover:bg-amber-50"
                 >
                   <Receipt className="h-4 w-4 mr-2" />
-                  Solicitar cuenta
+                  Pedir cuenta
                 </Button>
                 <Button
                   onClick={handleLiberarMesa}
@@ -405,6 +443,7 @@ export function MesaAccionesPanel({
               </>
             )}
 
+            {/* MESA OCUPADA AJENA: ayudar */}
             {estaOcupada && !esMiMesa && !modoAyuda && (
               <>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
@@ -425,6 +464,7 @@ export function MesaAccionesPanel({
               </>
             )}
 
+            {/* CUENTA SOLICITADA */}
             {cuentaSolicitada && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <div className="flex items-start gap-2">
@@ -436,6 +476,7 @@ export function MesaAccionesPanel({
               </div>
             )}
 
+            {/* FUERA DE SERVICIO */}
             {mesa.estado === 'fuera_servicio' && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                 <div className="flex items-start gap-2">

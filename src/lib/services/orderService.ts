@@ -104,17 +104,6 @@ export const orderService = {
     return data
   },
 
-  /**
-   * Crea un pedido.
-   *
-   * Si `meseroAsignadoId` y `mesaId` se proporcionan:
-   *   - El pedido se crea con destino "mesa" y se asigna al mesero
-   *   - Se notifica al mesero Y al bartender
-   *
-   * Si `ayudadoPorId` se proporciona:
-   *   - Se registra que este usuario ayudo al mesero titular
-   *   - Se notifica al mesero titular
-   */
   async createOrder(order: {
     mesero_id: string
     meseroAsignadoId?: string
@@ -166,21 +155,49 @@ export const orderService = {
       .select()
       .maybeSingle()
 
-    if (error) throw new Error('No se pudo crear el pedido')
+    if (error) throw new Error('No se pudo crear el pedido: ' + error.message)
     if (!data) throw new Error('No se pudo crear el pedido')
 
+    // ============================================================
+    // NOTIFICAR AL BARTENDER (con fix de bartender_id null)
+    // ============================================================
+    let bartenderIdParaNotificar: string | null = null
     try {
-      await notificationService.notificarBartender({
-        pedidoId: data.id,
-        tipo: 'nuevo_pedido',
-        mensaje: order.meseroAsignadoId
-          ? `Nuevo pedido para Mesa ${order.mesa} - ${order.items.length} items`
-          : `Nuevo pedido de ${order.mesa || 'Caja'} - ${order.items.length} items`
-      })
+      const { data: bartender } = await supabase
+        .from('bartenders')
+        .select('id')
+        .eq('activo', true)
+        .limit(1)
+        .maybeSingle()
+      bartenderIdParaNotificar = bartender?.id || null
     } catch (e) {
-      console.error('No se pudo notificar al bartender:', e)
+      console.warn('[createOrder] No se pudo buscar bartender:', e)
     }
 
+    if (bartenderIdParaNotificar) {
+      try {
+        await supabase.from('notificaciones_bartender').insert([
+          {
+            bartender_id: bartenderIdParaNotificar,
+            pedido_id: data.id,
+            tipo: 'nuevo_pedido',
+            mensaje: order.meseroAsignadoId
+              ? `Nuevo pedido para Mesa ${order.mesa} - ${order.items.length} items`
+              : `Nuevo pedido de ${order.mesa || 'Caja'} - ${order.items.length} items`,
+            leida: false,
+            jornada_id: jornadaId
+          }
+        ])
+      } catch (e) {
+        console.warn('[createOrder] No se pudo notificar al bartender:', e)
+      }
+    } else {
+      console.warn('[createOrder] Sin bartender activo. Pedido queda sin notificacion.')
+    }
+
+    // ============================================================
+    // NOTIFICAR AL MESERO ASIGNADO (si es diferente al que creó)
+    // ============================================================
     if (order.meseroAsignadoId && order.meseroAsignadoId !== order.mesero_id) {
       try {
         await notificationService.notificarMesero({
@@ -190,10 +207,13 @@ export const orderService = {
           mensaje: `Nuevo pedido asignado: Mesa ${order.mesa} - ${order.items.length} items`
         })
       } catch (e) {
-        console.error('No se pudo notificar al mesero:', e)
+        console.warn('No se pudo notificar al mesero:', e)
       }
     }
 
+    // ============================================================
+    // NOTIFICAR AYUDA AL MESERO TITULAR (si aplica)
+    // ============================================================
     if (order.ayudadoPorId && order.ayudadoPorId !== meseroFinalId) {
       try {
         const { data: ayudante } = await supabase
@@ -216,10 +236,13 @@ export const orderService = {
           }
         ])
       } catch (e) {
-        console.error('No se pudo notificar ayuda al mesero:', e)
+        console.warn('No se pudo notificar ayuda al mesero:', e)
       }
     }
-    // Descontar inventario automaticamente (best-effort)
+
+    // ============================================================
+    // DESCONTAR INVENTARIO (best-effort)
+    // ============================================================
     try {
       const { data: invResult, error: invError } = await supabase.rpc(
         'descontar_inventario_por_pedido',
@@ -262,9 +285,6 @@ export const orderService = {
     if (error) throw new Error('No se pudo marcar como servido')
   },
 
-  /**
-   * Asigna un bartender a un pedido pendiente (usado por NotificationBell)
-   */
   async assignBartender(
     pedidoId: string,
     bartenderId: string | null
@@ -290,7 +310,7 @@ export const orderService = {
     return { can: true }
   },
 
-   async cancelOrder(id: string, motivo: string, usuarioId: string): Promise<void> {
+  async cancelOrder(id: string, motivo: string, usuarioId: string): Promise<void> {
     const supabase = createClient()
     const { error } = await supabase
       .from('pedidos')
@@ -304,7 +324,6 @@ export const orderService = {
       .eq('id', id)
     if (error) throw new Error('No se pudo cancelar el pedido')
 
-    // Revertir inventario automaticamente (best-effort)
     try {
       const { data: revResult, error: revError } = await supabase.rpc(
         'revertir_inventario_por_pedido',
@@ -319,12 +338,7 @@ export const orderService = {
       console.error('[cancelOrder] Excepcion al revertir inventario:', e)
     }
   },
-   
 
-  /**
-   * Devuelve todas las ayudas registradas en una jornada.
-   * Util para el reporte final.
-   */
   async getAyudasDeJornada(jornadaId: string): Promise<
     Array<{
       pedido_id: string
