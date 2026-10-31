@@ -43,6 +43,17 @@ const SECTIONS: SidebarSection[] = [
   }
 ]
 
+/**
+ * Normaliza el nombre visible de una mesa.
+ * Si ya viene con el prefijo "Mesa " o "mesa ", lo quita.
+ * Devuelve solo el identificador (ej: "E1", "P4", "S5").
+ */
+function normalizarNombreMesa(mesa: string | null | undefined): string {
+  if (!mesa) return 'N/A'
+  const limpio = mesa.trim().replace(/^mesa\s+/i, '')
+  return limpio || 'N/A'
+}
+
 export default function BartenderDashboard() {
   const { user, logout } = useAuth()
   const router = useRouter()
@@ -143,7 +154,7 @@ export default function BartenderDashboard() {
             mesero_id: pedido.mesero_id,
             pedido_id: pedidoId,
             tipo: 'pedido_actualizado',
-            mensaje: `Pedido de mesa ${pedido.mesa} ahora esta: ${nuevoEstado}`,
+            mensaje: `Pedido de mesa ${normalizarNombreMesa(pedido.mesa)} ahora esta: ${nuevoEstado}`,
             jornada_id: jornadaId
           }
         ])
@@ -418,7 +429,7 @@ export default function BartenderDashboard() {
                           <div className="flex-1 min-w-0 w-full sm:w-auto">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-base sm:text-lg">
-                                Mesa {pedido.mesa || 'N/A'}
+                                Mesa {normalizarNombreMesa(pedido.mesa)}
                               </span>
                               <Badge className={`${getStatusColor(pedido.estado)} text-xs`}>
                                 {getStatusIcon(pedido.estado)}
