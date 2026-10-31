@@ -33,6 +33,53 @@ export interface CrearPedidoResult {
   sin_bartender: boolean
 }
 
+/**
+ * Busca el bartender que debe atender un pedido nuevo.
+ * Prioridad:
+ *   1. turno_activo = true AND disponible = true
+ *   2. turno_activo = true
+ *   3. activo = true (fallback)
+ * Devuelve null si no hay ninguno.
+ */
+async function resolverBartenderAsignable(
+  supabase: ReturnType<typeof createClient>
+): Promise<string | null> {
+  try {
+    // Prioridad 1: en turno y disponible
+    const { data: p1 } = await supabase
+      .from('bartenders')
+      .select('id')
+      .eq('activo', true)
+      .eq('turno_activo', true)
+      .eq('disponible', true)
+      .limit(1)
+      .maybeSingle()
+    if (p1?.id) return p1.id
+
+    // Prioridad 2: en turno
+    const { data: p2 } = await supabase
+      .from('bartenders')
+      .select('id')
+      .eq('activo', true)
+      .eq('turno_activo', true)
+      .limit(1)
+      .maybeSingle()
+    if (p2?.id) return p2.id
+
+    // Prioridad 3: activo (aunque no esté en turno)
+    const { data: p3 } = await supabase
+      .from('bartenders')
+      .select('id')
+      .eq('activo', true)
+      .limit(1)
+      .maybeSingle()
+    return p3?.id || null
+  } catch (e) {
+    console.warn('[orderService] Error buscando bartender asignable:', e)
+    return null
+  }
+}
+
 export const orderService = {
   async getOrdersByEstado(estado?: string): Promise<Order[]> {
     const supabase = createClient()
@@ -126,6 +173,7 @@ export const orderService = {
 
     const meseroFinalId = order.meseroAsignadoId || order.mesero_id
 
+    // Resolver jornada si no vino explícita
     let jornadaId = order.jornadaId
     if (jornadaId === undefined) {
       const { data: jornada } = await supabase
@@ -136,11 +184,15 @@ export const orderService = {
       jornadaId = jornada?.id || null
     }
 
+    // FIX: resolver bartender ANTES del insert para guardarlo en la fila
+    const bartenderAsignadoId = await resolverBartenderAsignable(supabase)
+
     const { data, error } = await supabase
       .from('pedidos')
       .insert([
         {
           mesero_id: meseroFinalId,
+          bartender_id: bartenderAsignadoId, // FIX: antes faltaba
           mesa: order.mesa || 'Caja',
           items: order.items,
           total: order.total,
@@ -159,31 +211,18 @@ export const orderService = {
     if (!data) throw new Error('No se pudo crear el pedido')
 
     // ============================================================
-    // NOTIFICAR AL BARTENDER (con fix de bartender_id null)
+    // NOTIFICAR AL BARTENDER (si se pudo asignar)
     // ============================================================
-    let bartenderIdParaNotificar: string | null = null
-    try {
-      const { data: bartender } = await supabase
-        .from('bartenders')
-        .select('id')
-        .eq('activo', true)
-        .limit(1)
-        .maybeSingle()
-      bartenderIdParaNotificar = bartender?.id || null
-    } catch (e) {
-      console.warn('[createOrder] No se pudo buscar bartender:', e)
-    }
-
-    if (bartenderIdParaNotificar) {
+    if (bartenderAsignadoId) {
       try {
         await supabase.from('notificaciones_bartender').insert([
           {
-            bartender_id: bartenderIdParaNotificar,
+            bartender_id: bartenderAsignadoId,
             pedido_id: data.id,
             tipo: 'nuevo_pedido',
-            mensaje: order.meseroAsignadoId
-              ? `Nuevo pedido para Mesa ${order.mesa} - ${order.items.length} items`
-              : `Nuevo pedido de ${order.mesa || 'Caja'} - ${order.items.length} items`,
+            mensaje: order.mesa
+              ? `Nuevo pedido para ${order.mesa} - ${order.items.length} items`
+              : `Nuevo pedido - ${order.items.length} items`,
             leida: false,
             jornada_id: jornadaId
           }
@@ -192,7 +231,9 @@ export const orderService = {
         console.warn('[createOrder] No se pudo notificar al bartender:', e)
       }
     } else {
-      console.warn('[createOrder] Sin bartender activo. Pedido queda sin notificacion.')
+      console.warn(
+        '[createOrder] Sin bartender activo. Pedido creado sin bartender_id ni notificacion.'
+      )
     }
 
     // ============================================================
