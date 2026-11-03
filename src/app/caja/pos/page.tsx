@@ -26,10 +26,20 @@ import { useTurnoActivo } from '@/hooks/useTurnoActivo'
 import { AvisoNoActivo } from '@/components/shared/AvisoNoActivo'
 import { SeleccionDestino, TipoDestino } from '@/components/caja/SeleccionDestino'
 
-// IDs fijos de los dos mixers de regalo (confirmados en BD)
+// IDs fijos de los dos mixers de regalo
 const MIXER_AGUA_ID = 'c215aaba-febc-483d-968b-39c4d93c3a6d'
 const MIXER_REFRESCO_ID = '702a33df-688c-4b72-809c-33f9fe318f02'
 const MIXERS_GRATIS_POR_BOTELLA = 4
+
+// Nombres permitidos en el tab Servicios (solo bebidas vendibles)
+const SERVICIOS_PERMITIDOS = [
+  'Agua Mineral',
+  'Agua Natural',
+  'Refresco',
+  'Sprite',
+  'Ginger Ale',
+  'Volt'
+]
 
 interface CartItem {
   id: string
@@ -94,7 +104,6 @@ export default function CajaPOSPage() {
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
 
-  // Modal de mixers
   const [modalMixersOpen, setModalMixersOpen] = useState(false)
   const [botellaParaMixers, setBotellaParaMixers] = useState<Product | null>(null)
   const [mixerAgua, setMixerAgua] = useState(0)
@@ -156,7 +165,8 @@ export default function CajaPOSPage() {
     if (!tab) return []
     return productos.filter(p => {
       const cat = (p.categoria_nombre || '').toLowerCase()
-      return tab.categorias.includes(cat)
+      const nombreOk = tabActiva !== 'servicios' || SERVICIOS_PERMITIDOS.includes(p.nombre)
+      return tab.categorias.includes(cat) && nombreOk
     })
   }, [productos, tabActiva])
 
@@ -186,10 +196,13 @@ export default function CajaPOSPage() {
     if (key === 'cocteles') return recetas.length
     const tab = TABS.find(t => t.key === key)
     if (!tab) return 0
-    return productos.filter(p => tab.categorias.includes((p.categoria_nombre || '').toLowerCase())).length
+    return productos.filter(p => {
+      const cat = (p.categoria_nombre || '').toLowerCase()
+      const nombreOk = key !== 'servicios' || SERVICIOS_PERMITIDOS.includes(p.nombre)
+      return tab.categorias.includes(cat) && nombreOk
+    }).length
   }
 
-  // Determina si un producto es una botella elegible para mixers
   const esBotellaElegible = (producto: Product): boolean => {
     const cat = (producto.categoria_nombre || '').toLowerCase()
     return ['tequila', 'ron', 'whisky', 'vodka', 'mezcal', 'ginebra', 'licor', 'champagne'].includes(cat)
@@ -222,7 +235,6 @@ export default function CajaPOSPage() {
         stock_disponible: producto.stock_actual
       }])
     }
-    // Abrir modal de mixers para esa botella
     setBotellaParaMixers(producto)
     setMixerAgua(0)
     setMixerRefresco(0)
@@ -260,7 +272,6 @@ export default function CajaPOSPage() {
         cantidad: mixerRefresco
       })
     }
-    // Agregar mixers: si ya hay un grupo de regalo de esta misma combinacion, sumar cantidades
     const cartActual = [...cart]
     for (const nuevo of nuevos) {
       const existente = cartActual.find(c => c.id === nuevo.id && c.tipo === 'mixer_regalo')
@@ -307,12 +318,10 @@ export default function CajaPOSPage() {
       })
       return
     }
-    // Si es botella, dispara el modal de mixers
     if (esBotellaElegible(producto)) {
       addBotellaAlCarrito(producto)
       return
     }
-    // Si no es botella, flujo normal
     const existing = cart.find(item => item.id === producto.id && item.tipo === 'producto')
     if (existing) {
       if (existing.cantidad >= producto.stock_actual) {
@@ -369,6 +378,24 @@ export default function CajaPOSPage() {
       removeFromCart(id, tipo)
       return
     }
+    if (tipo === 'mixer_regalo') {
+      // Blindaje: los mixers de regalo solo se pueden reducir o eliminar.
+      // Si el usuario intenta incrementar, no permitimos pasar del total actual (que ya fue validado en el modal).
+      const item = cart.find(i => i.id === id && i.tipo === 'mixer_regalo')
+      if (item && cantidad > item.cantidad) {
+        toast({
+          title: 'Mixers de regalo limitados',
+          description: 'Para agregar mas, usa el tab Servicios (se cobran a precio normal)',
+          variant: 'destructive',
+          duration: 3500
+        })
+        return
+      }
+      setCart(cart.map(item =>
+        item.id === id && item.tipo === 'mixer_regalo' ? { ...item, cantidad } : item
+      ))
+      return
+    }
     if (tipo === 'producto') {
       const item = cart.find(i => i.id === id && i.tipo === 'producto')
       if (item && item.stock_disponible !== undefined && cantidad > item.stock_disponible) {
@@ -379,9 +406,6 @@ export default function CajaPOSPage() {
         })
         return
       }
-    }
-    if (tipo === 'mixer_regalo' && cantidad > MIXERS_GRATIS_POR_BOTELLA * 10) {
-      return
     }
     setCart(cart.map(item =>
       item.id === id && item.tipo === tipo ? { ...item, cantidad } : item
@@ -711,53 +735,64 @@ export default function CajaPOSPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {cart.map((item) => (
-                      <div key={`${item.tipo}-${item.id}`} className="flex items-center gap-2 border-b pb-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1">
-                            <p className="font-medium text-xs truncate">{item.nombre}</p>
-                            {item.tipo === 'mixer_regalo' && (
-                              <Badge className="bg-amber-100 text-amber-700 text-[9px] px-1 py-0">
-                                Regalo
-                              </Badge>
-                            )}
+                    {cart.map((item) => {
+                      const esRegalo = item.tipo === 'mixer_regalo'
+                      return (
+                        <div key={`${item.tipo}-${item.id}`} className="flex items-center gap-2 border-b pb-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <p className="font-medium text-xs truncate">{item.nombre}</p>
+                              {esRegalo && (
+                                <Badge className="bg-amber-100 text-amber-700 text-[9px] px-1 py-0">
+                                  Regalo
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-gray-500">
+                              ${item.precio.toFixed(2)} x {item.cantidad} = <strong>${(item.precio * item.cantidad).toFixed(2)}</strong>
+                            </p>
                           </div>
-                          <p className="text-[10px] text-gray-500">
-                            ${item.precio.toFixed(2)} x {item.cantidad} = <strong>${(item.precio * item.cantidad).toFixed(2)}</strong>
-                          </p>
+                          <div className="flex items-center gap-0.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
+                              onClick={() => updateQuantity(item.id, item.tipo, item.cantidad - 1)}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <span className="w-5 text-center text-xs font-medium">{item.cantidad}</span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className={`h-6 w-6 p-0 ${esRegalo ? 'text-gray-300' : ''}`}
+                              onClick={() => updateQuantity(item.id, item.tipo, item.cantidad + 1)}
+                              disabled={esRegalo}
+                              title={esRegalo ? 'Mixers de regalo limitados: agregalos desde Servicios' : ''}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
+                              onClick={() => removeFromCart(item.id, item.tipo)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-0.5">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
-                            onClick={() => updateQuantity(item.id, item.tipo, item.cantidad - 1)}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <span className="w-5 text-center text-xs font-medium">{item.cantidad}</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
-                            onClick={() => updateQuantity(item.id, item.tipo, item.cantidad + 1)}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
-                            onClick={() => removeFromCart(item.id, item.tipo)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </ScrollArea>
+
+              {totalRegalos > 0 && (
+                <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                  Tienes {totalRegalos} mixer(s) de regalo. Para agregar mas, usa el tab Servicios (se cobran).
+                </div>
+              )}
 
               <div className="border-t pt-3 space-y-3">
                 {error && (
@@ -853,7 +888,6 @@ export default function CajaPOSPage() {
         </div>
       </div>
 
-      {/* Modal de mixers de regalo */}
       <Dialog open={modalMixersOpen} onOpenChange={(open) => {
         if (!open) omitirMixers()
       }}>
