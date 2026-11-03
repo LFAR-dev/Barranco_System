@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,32 +10,74 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { 
-  Search, Plus, Minus, Trash2, ShoppingCart, 
+import {
+  Search, Plus, Minus, Trash2, ShoppingCart,
   CreditCard, DollarSign, ArrowLeft, CheckCircle,
-  Loader2, AlertCircle
+  Loader2, AlertCircle, Wine, Beer, GlassWater, Droplet, Martini
 } from 'lucide-react'
-import { productService, Product } from '@/lib/services/productService'
+import { productService, Product, RecetaPOS } from '@/lib/services/productService'
 import { orderService } from '@/lib/services/orderService'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
 import { useTurnoActivo } from '@/hooks/useTurnoActivo'
-import { BotonReceta } from '@/components/shared/BotonReceta'
 import { AvisoNoActivo } from '@/components/shared/AvisoNoActivo'
 import { SeleccionDestino, TipoDestino } from '@/components/caja/SeleccionDestino'
 
-interface CartItem extends Product {
+interface CartItem {
+  id: string
+  tipo: 'producto' | 'receta'
+  nombre: string
+  marca?: string
+  precio: number
   cantidad: number
+  stock_disponible?: number
 }
+
+type TabCategoria = 'botellas' | 'cervezas' | 'cocteles' | 'servicios' | 'shots'
+
+const TABS: Array<{ key: TabCategoria; label: string; icon: JSX.Element; categorias: string[] }> = [
+  {
+    key: 'botellas',
+    label: 'Botellas',
+    icon: <Wine className="h-4 w-4" />,
+    categorias: ['tequila', 'ron', 'whisky', 'vodka', 'mezcal', 'ginebra', 'licor', 'champagne']
+  },
+  {
+    key: 'cervezas',
+    label: 'Cervezas',
+    icon: <Beer className="h-4 w-4" />,
+    categorias: ['cerveza']
+  },
+  {
+    key: 'cocteles',
+    label: 'Cocteles',
+    icon: <Martini className="h-4 w-4" />,
+    categorias: []
+  },
+  {
+    key: 'servicios',
+    label: 'Servicios',
+    icon: <Droplet className="h-4 w-4" />,
+    categorias: ['agua', 'refresco']
+  },
+  {
+    key: 'shots',
+    label: 'Shots',
+    icon: <GlassWater className="h-4 w-4" />,
+    categorias: ['shots']
+  }
+]
 
 export default function CajaPOSPage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
+
   const [productos, setProductos] = useState<Product[]>([])
-  const [filteredProductos, setFilteredProductos] = useState<Product[]>([])
+  const [recetas, setRecetas] = useState<RecetaPOS[]>([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [tabActiva, setTabActiva] = useState<TabCategoria>('botellas')
   const [cart, setCart] = useState<CartItem[]>([])
   const [notas, setNotas] = useState('')
   const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta'>('efectivo')
@@ -44,7 +86,6 @@ export default function CajaPOSPage() {
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
 
-  // Destino del pedido
   const [destino, setDestino] = useState<{
     tipo: TipoDestino
     mesaId: string
@@ -69,34 +110,25 @@ export default function CajaPOSPage() {
       return
     }
     if (user) {
-      fetchProductos()
+      fetchData()
     }
   }, [user, authLoading, router])
 
-  useEffect(() => {
-    if (searchTerm) {
-      setFilteredProductos(
-        productos.filter(p =>
-          p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.marca?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      )
-    } else {
-      setFilteredProductos(productos)
-    }
-  }, [searchTerm, productos])
-
-  const fetchProductos = async () => {
+  const fetchData = async () => {
     setLoading(true)
     setError('')
     try {
-      const data = await productService.getAll()
-      setProductos(data.filter(p => p.activo && p.stock_actual > 0))
-    } catch (error: any) {
-      setError(error.message || 'No se pudieron cargar los productos')
+      const [productosData, recetasData] = await Promise.all([
+        productService.getVendibles(),
+        productService.getRecetasActivas()
+      ])
+      setProductos(productosData.filter(p => p.stock_actual > 0))
+      setRecetas(recetasData)
+    } catch (err: any) {
+      setError(err.message || 'No se pudieron cargar los productos')
       toast({
-        title: '❌ Error',
-        description: error.message || 'No se pudieron cargar los productos',
+        title: 'Error',
+        description: err.message || 'No se pudieron cargar los productos',
         variant: 'destructive'
       })
     } finally {
@@ -104,79 +136,140 @@ export default function CajaPOSPage() {
     }
   }
 
-  const addToCart = (producto: Product) => {
+  // Productos filtrados por tab activa
+  const productosDelTab = useMemo(() => {
+    if (tabActiva === 'cocteles') return []
+    const tab = TABS.find(t => t.key === tabActiva)
+    if (!tab) return []
+    return productos.filter(p => {
+      const cat = (p.categoria_nombre || '').toLowerCase()
+      return tab.categorias.includes(cat)
+    })
+  }, [productos, tabActiva])
+
+  const recetasDelTab = useMemo(() => {
+    if (tabActiva !== 'cocteles') return []
+    return recetas
+  }, [recetas, tabActiva])
+
+  // Aplicar busqueda sobre lo del tab activo
+  const productosFiltrados = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) return productosDelTab
+    return productosDelTab.filter(p =>
+      p.nombre.toLowerCase().includes(term) ||
+      (p.marca || '').toLowerCase().includes(term)
+    )
+  }, [productosDelTab, searchTerm])
+
+  const recetasFiltradas = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) return recetasDelTab
+    return recetasDelTab.filter(r =>
+      r.nombre.toLowerCase().includes(term)
+    )
+  }, [recetasDelTab, searchTerm])
+
+  const conteoTab = (key: TabCategoria): number => {
+    if (key === 'cocteles') return recetas.length
+    const tab = TABS.find(t => t.key === key)
+    if (!tab) return 0
+    return productos.filter(p => tab.categorias.includes((p.categoria_nombre || '').toLowerCase())).length
+  }
+
+  const addProductoToCart = (producto: Product) => {
     if (producto.stock_actual <= 0) {
       toast({
-        title: '⚠️ Sin stock',
+        title: 'Sin stock',
         description: `${producto.nombre} no tiene existencias disponibles`,
         variant: 'destructive'
       })
       return
     }
-
-    const existing = cart.find(item => item.id === producto.id)
+    const existing = cart.find(item => item.id === producto.id && item.tipo === 'producto')
     if (existing) {
       if (existing.cantidad >= producto.stock_actual) {
         toast({
-          title: '⚠️ Stock insuficiente',
+          title: 'Stock insuficiente',
           description: `Solo hay ${producto.stock_actual} unidades de ${producto.nombre}`,
           variant: 'destructive'
         })
         return
       }
       setCart(cart.map(item =>
-        item.id === producto.id
+        item.id === producto.id && item.tipo === 'producto'
           ? { ...item, cantidad: item.cantidad + 1 }
           : item
       ))
     } else {
-      setCart([...cart, { ...producto, cantidad: 1 }])
+      setCart([...cart, {
+        id: producto.id,
+        tipo: 'producto',
+        nombre: producto.nombre,
+        marca: producto.marca,
+        precio: producto.precio_venta || 0,
+        cantidad: 1,
+        stock_disponible: producto.stock_actual
+      }])
     }
   }
 
-  const removeFromCart = (productoId: string) => {
-    setCart(cart.filter(item => item.id !== productoId))
+  const addRecetaToCart = (receta: RecetaPOS) => {
+    const existing = cart.find(item => item.id === receta.id && item.tipo === 'receta')
+    if (existing) {
+      setCart(cart.map(item =>
+        item.id === receta.id && item.tipo === 'receta'
+          ? { ...item, cantidad: item.cantidad + 1 }
+          : item
+      ))
+    } else {
+      setCart([...cart, {
+        id: receta.id,
+        tipo: 'receta',
+        nombre: receta.nombre,
+        precio: receta.precio_venta || 0,
+        cantidad: 1
+      }])
+    }
   }
 
-  const updateQuantity = (productoId: string, cantidad: number) => {
+  const removeFromCart = (id: string, tipo: 'producto' | 'receta') => {
+    setCart(cart.filter(item => !(item.id === id && item.tipo === tipo)))
+  }
+
+  const updateQuantity = (id: string, tipo: 'producto' | 'receta', cantidad: number) => {
     if (cantidad <= 0) {
-      removeFromCart(productoId)
+      removeFromCart(id, tipo)
       return
     }
-
-    const producto = productos.find(p => p.id === productoId)
-    if (producto && cantidad > producto.stock_actual) {
-      toast({
-        title: '⚠️ Stock insuficiente',
-        description: `Solo hay ${producto.stock_actual} unidades disponibles`,
-        variant: 'destructive'
-      })
-      return
+    if (tipo === 'producto') {
+      const item = cart.find(i => i.id === id && i.tipo === 'producto')
+      if (item && item.stock_disponible !== undefined && cantidad > item.stock_disponible) {
+        toast({
+          title: 'Stock insuficiente',
+          description: `Solo hay ${item.stock_disponible} unidades disponibles`,
+          variant: 'destructive'
+        })
+        return
+      }
     }
-
     setCart(cart.map(item =>
-      item.id === productoId ? { ...item, cantidad } : item
+      item.id === id && item.tipo === tipo ? { ...item, cantidad } : item
     ))
   }
 
   const clearCart = () => {
     if (cart.length === 0) return
-    if (confirm('¿Estás seguro de que deseas vaciar el carrito?')) {
+    if (confirm('Estas seguro de que deseas vaciar el carrito?')) {
       setCart([])
       setEfectivoRecibido('')
-      toast({
-        title: '🗑️ Carrito vaciado',
-        description: 'Se eliminaron todos los productos',
-        variant: 'default'
-      })
+      toast({ title: 'Carrito vaciado', variant: 'default' })
     }
   }
 
-  const total = cart.reduce((sum, item) => 
-    sum + (item.precio_venta || 0) * item.cantidad, 0
-  )
+  const total = cart.reduce((sum, item) => sum + item.precio * item.cantidad, 0)
 
-  const cambio = metodoPago === 'efectivo' 
+  const cambio = metodoPago === 'efectivo'
     ? Math.max(0, parseFloat(efectivoRecibido || '0') - total)
     : 0
 
@@ -190,25 +283,21 @@ export default function CajaPOSPage() {
 
   const handleCrearPedido = async () => {
     if (!turnoActivo) {
-      setError('No estás activo en el turno actual. Contacta al administrador.')
+      setError('No estas activo en el turno actual. Contacta al administrador.')
       return
     }
-
     if (!user) {
       setError('No hay usuario autenticado')
       return
     }
-
     if (cart.length === 0) {
       setError('Agrega al menos un producto al pedido')
       return
     }
-
     if (metodoPago === 'efectivo' && parseFloat(efectivoRecibido || '0') < total) {
       setError('El efectivo recibido es insuficiente')
       return
     }
-
     const errorDestino = validarDestino()
     if (errorDestino) {
       setError(errorDestino)
@@ -223,8 +312,8 @@ export default function CajaPOSPage() {
         receta_id: item.id,
         cantidad: item.cantidad,
         nombre: item.nombre,
-        precio: item.precio_venta || 0,
-        tipo: 'producto'
+        precio: item.precio,
+        tipo: item.tipo
       }))
 
       const result = await orderService.createOrder({
@@ -238,16 +327,14 @@ export default function CajaPOSPage() {
         tipo_origen: 'caja'
       })
 
-      if (!result) {
-        throw new Error('No se pudo crear el pedido')
-      }
+      if (!result) throw new Error('No se pudo crear el pedido')
 
       const mensajeDestino = destino.tipo === 'mesa'
-        ? `📦 Pedido enviado a ${destino.meseroNombre} para ${destino.mesaNombre}`
-        : '📦 Pedido listo para recoger en caja'
+        ? `Pedido enviado a ${destino.meseroNombre} para ${destino.mesaNombre}`
+        : 'Pedido listo para recoger en caja'
 
       toast({
-        title: '✅ Pedido creado',
+        title: 'Pedido creado',
         description: `${mensajeDestino}. Total: $${total.toFixed(2)}${cambio > 0 ? ` | Cambio: $${cambio.toFixed(2)}` : ''}`,
         variant: 'success',
         duration: 6000
@@ -263,18 +350,13 @@ export default function CajaPOSPage() {
         meseroId: '',
         meseroNombre: ''
       })
-      
-      await fetchProductos()
-      
-      setTimeout(() => {
-        router.push('/caja')
-      }, 1500)
-
+      await fetchData()
+      setTimeout(() => router.push('/caja'), 1500)
     } catch (err: any) {
       console.error('Error:', err)
       setError(err.message || 'No se pudo crear el pedido')
       toast({
-        title: '❌ Error al crear pedido',
+        title: 'Error al crear pedido',
         description: err.message || 'No se pudo crear el pedido. Intenta de nuevo.',
         variant: 'destructive',
         duration: 6000
@@ -346,48 +428,99 @@ export default function CajaPOSPage() {
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <ShoppingCart className="h-5 w-5" />
                 Productos
-                <Badge variant="secondary" className="text-xs">{filteredProductos.length}</Badge>
               </CardTitle>
               <div className="relative mt-3">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="Buscar productos por nombre o marca..."
+                  placeholder="Buscar en la categoria activa..."
                   className="pl-9"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
+              <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+                {TABS.map(tab => {
+                  const activa = tabActiva === tab.key
+                  const count = conteoTab(tab.key)
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => { setTabActiva(tab.key); setSearchTerm('') }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
+                        activa
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {tab.icon}
+                      <span>{tab.label}</span>
+                      <span className={`text-[10px] px-1.5 rounded-full ${activa ? 'bg-white/20' : 'bg-white'}`}>
+                        {count}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             </CardHeader>
             <CardContent>
-              {filteredProductos.length === 0 ? (
+              {tabActiva === 'cocteles' ? (
+                recetasFiltradas.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <Martini className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p className="font-medium">No hay cocteles disponibles</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[500px] sm:h-[600px]">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
+                      {recetasFiltradas.map(receta => (
+                        <Card
+                          key={receta.id}
+                          className="hover:shadow-lg hover:scale-[1.02] transition-all duration-200 border-2 hover:border-emerald-300 cursor-pointer"
+                          onClick={() => addRecetaToCart(receta)}
+                        >
+                          <CardContent className="p-2 sm:p-3 text-center">
+                            <p className="font-medium text-xs sm:text-sm truncate" title={receta.nombre}>
+                              {receta.nombre}
+                            </p>
+                            <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                              {receta.categoria?.replace('con_', '') || 'coctel'}
+                            </p>
+                            <p className="text-base sm:text-lg font-bold text-emerald-600 mt-1">
+                              ${receta.precio_venta?.toFixed(2) || '0.00'}
+                            </p>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )
+              ) : productosFiltrados.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <ShoppingCart className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p className="font-medium">No se encontraron productos</p>
-                  <p className="text-sm">Intenta con otra búsqueda</p>
+                  <p className="font-medium">No hay productos en esta categoria</p>
+                  <p className="text-sm">Prueba con otra categoria o busqueda</p>
                 </div>
               ) : (
                 <ScrollArea className="h-[500px] sm:h-[600px]">
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
-                    {filteredProductos.map((producto) => (
+                    {productosFiltrados.map(producto => (
                       <Card
                         key={producto.id}
-                        className="hover:shadow-lg hover:scale-[1.02] transition-all duration-200 border-2 hover:border-emerald-300 relative"
+                        className="hover:shadow-lg hover:scale-[1.02] transition-all duration-200 border-2 hover:border-emerald-300 cursor-pointer"
+                        onClick={() => addProductoToCart(producto)}
                       >
                         <CardContent className="p-2 sm:p-3 text-center">
-                          <div
-                            className="cursor-pointer"
-                            onClick={() => addToCart(producto)}
-                          >
-                            <p className="font-medium text-xs sm:text-sm truncate" title={producto.nombre}>
-                              {producto.nombre}
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-gray-500 truncate">{producto.marca}</p>
-                            <p className="text-base sm:text-lg font-bold text-emerald-600 mt-1">
-                              ${producto.precio_venta?.toFixed(2) || '0.00'}
-                            </p>
-                          </div>
+                          <p className="font-medium text-xs sm:text-sm truncate" title={producto.nombre}>
+                            {producto.nombre}
+                          </p>
+                          <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                            {producto.marca || '-'}
+                          </p>
+                          <p className="text-base sm:text-lg font-bold text-emerald-600 mt-1">
+                            ${producto.precio_venta?.toFixed(2) || '0.00'}
+                          </p>
                           <div className="flex items-center justify-center gap-1 mt-1">
-                            <Badge 
+                            <Badge
                               className={`text-[10px] sm:text-xs ${
                                 producto.stock_actual <= producto.stock_minimo
                                   ? 'bg-red-100 text-red-700'
@@ -396,12 +529,6 @@ export default function CajaPOSPage() {
                             >
                               Stock: {producto.stock_actual}
                             </Badge>
-                            <BotonReceta 
-                              recetaId={producto.id} 
-                              recetaNombre={producto.nombre}
-                              variant="icon"
-                              size="sm"
-                            />
                           </div>
                         </CardContent>
                       </Card>
@@ -431,16 +558,16 @@ export default function CajaPOSPage() {
                 {cart.length === 0 ? (
                   <div className="text-center py-6">
                     <ShoppingCart className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-gray-400 text-xs">Carrito vacío</p>
+                    <p className="text-gray-400 text-xs">Carrito vacio</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {cart.map((item) => (
-                      <div key={item.id} className="flex items-center gap-2 border-b pb-2">
+                      <div key={`${item.tipo}-${item.id}`} className="flex items-center gap-2 border-b pb-2">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-xs truncate">{item.nombre}</p>
                           <p className="text-[10px] text-gray-500">
-                            ${item.precio_venta?.toFixed(2)} × {item.cantidad} = <strong>${((item.precio_venta || 0) * item.cantidad).toFixed(2)}</strong>
+                            ${item.precio.toFixed(2)} x {item.cantidad} = <strong>${(item.precio * item.cantidad).toFixed(2)}</strong>
                           </p>
                         </div>
                         <div className="flex items-center gap-0.5">
@@ -448,7 +575,7 @@ export default function CajaPOSPage() {
                             size="sm"
                             variant="ghost"
                             className="h-6 w-6 p-0"
-                            onClick={() => updateQuantity(item.id, item.cantidad - 1)}
+                            onClick={() => updateQuantity(item.id, item.tipo, item.cantidad - 1)}
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
@@ -457,7 +584,7 @@ export default function CajaPOSPage() {
                             size="sm"
                             variant="ghost"
                             className="h-6 w-6 p-0"
-                            onClick={() => updateQuantity(item.id, item.cantidad + 1)}
+                            onClick={() => updateQuantity(item.id, item.tipo, item.cantidad + 1)}
                           >
                             <Plus className="h-3 w-3" />
                           </Button>
@@ -465,7 +592,7 @@ export default function CajaPOSPage() {
                             size="sm"
                             variant="ghost"
                             className="h-6 w-6 p-0 text-red-500 hover:bg-red-50"
-                            onClick={() => removeFromCart(item.id)}
+                            onClick={() => removeFromCart(item.id, item.tipo)}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
@@ -484,14 +611,13 @@ export default function CajaPOSPage() {
                   </Alert>
                 )}
 
-                {/* SECCIÓN DESTINO DEL PEDIDO */}
                 <SeleccionDestino onChange={setDestino} />
 
                 <div className="space-y-2">
                   <Label htmlFor="notas" className="text-xs">Notas (opcional)</Label>
                   <Input
                     id="notas"
-                    placeholder="Ej: Sin hielo, extra limón..."
+                    placeholder="Ej: Sin hielo, extra limon..."
                     value={notas}
                     onChange={(e) => setNotas(e.target.value)}
                     disabled={processing}

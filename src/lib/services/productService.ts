@@ -22,6 +22,16 @@ export interface Product {
   qr_token?: string
 }
 
+export interface RecetaPOS {
+  id: string
+  nombre: string
+  nombre_corto?: string
+  categoria?: string
+  precio_venta: number
+  activa: boolean
+  imagen_url?: string
+}
+
 export interface MovimientoInventario {
   id: string
   producto_id: string
@@ -41,10 +51,19 @@ export interface MovimientoInventario {
   }
 }
 
+/**
+ * Categorias que se consideran "vendibles" en el POS de caja.
+ * Excluye insumo, garnish, pack (por ahora) y todo lo que sea insumo.
+ */
+const CATEGORIAS_VENDIBLES = [
+  'tequila', 'ron', 'whisky', 'vodka', 'mezcal', 'ginebra',
+  'licor', 'champagne', 'cerveza', 'shots', 'agua', 'refresco'
+]
+
 export const productService = {
   async getAll(): Promise<Product[]> {
     const supabase = createClient()
-    
+
     try {
       const { data, error } = await supabase
         .from('productos')
@@ -54,14 +73,14 @@ export const productService = {
         `)
         .eq('activo', true)
         .order('nombre')
-      
+
       if (error) throw error
-      
+
       return data?.map((item: any) => ({
         ...item,
         categoria_nombre: item.categorias?.nombre || 'Sin categoría'
       })) || []
-      
+
     } catch (error) {
       console.error('Error en consulta con join, usando fallback:', error)
       return this.getAllFallback()
@@ -70,35 +89,71 @@ export const productService = {
 
   async getAllFallback(): Promise<Product[]> {
     const supabase = createClient()
-    
+
     const { data: productos, error: productError } = await supabase
       .from('productos')
       .select('*')
       .eq('activo', true)
       .order('nombre')
-    
+
     if (productError) throw productError
     if (!productos || productos.length === 0) return []
-    
+
     const { data: categorias, error: catError } = await supabase
       .from('categorias')
       .select('id, nombre')
       .eq('activa', true)
-    
+
     if (catError) throw catError
-    
+
     const categoriaMap = new Map()
     categorias?.forEach(c => categoriaMap.set(c.id, c.nombre))
-    
+
     return productos.map((producto: any) => ({
       ...producto,
       categoria_nombre: categoriaMap.get(producto.categoria_id) || 'Sin categoría'
     }))
   },
 
+  /**
+   * Devuelve SOLO los productos que se pueden vender en el POS de caja.
+   * Excluye es_insumo=true, es_paquete=true (los packs se manejan aparte)
+   * y filtra por categoria vendible.
+   */
+  async getVendibles(): Promise<Product[]> {
+    const todos = await this.getAll()
+    return todos.filter(p => {
+      if (p.es_insumo === true) return false
+      if (p.es_paquete === true) return false
+      const cat = (p.categoria_nombre || '').toLowerCase()
+      if (cat === 'insumo' || cat === 'garnish' || cat === 'pack') return false
+      // Si es bebida principal o su categoria es vendible, se queda
+      if (p.es_bebida_principal === true) return true
+      return CATEGORIAS_VENDIBLES.includes(cat)
+    })
+  },
+
+  /**
+   * Devuelve las recetas activas para mostrarlas como productos vendibles
+   * en el tab "Cocteles" del POS.
+   */
+  async getRecetasActivas(): Promise<RecetaPOS[]> {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('recetas')
+      .select('id, nombre, nombre_corto, categoria, precio_venta, activa, imagen_url')
+      .eq('activa', true)
+      .order('nombre')
+    if (error) {
+      console.error('Error al cargar recetas:', error)
+      return []
+    }
+    return (data || []) as RecetaPOS[]
+  },
+
   async getById(id: string): Promise<Product | null> {
     const supabase = createClient()
-    
+
     try {
       const { data, error } = await supabase
         .from('productos')
@@ -108,15 +163,15 @@ export const productService = {
         `)
         .eq('id', id)
         .maybeSingle()
-      
+
       if (error) throw error
       if (!data) return null
-      
+
       return {
         ...data,
         categoria_nombre: data.categorias?.nombre || 'Sin categoría'
       } as Product
-      
+
     } catch (error) {
       console.error('Error en getById con join, usando fallback:', error)
       return this.getByIdFallback(id)
@@ -125,24 +180,24 @@ export const productService = {
 
   async getByIdFallback(id: string): Promise<Product | null> {
     const supabase = createClient()
-    
+
     const { data: producto, error } = await supabase
       .from('productos')
       .select('*')
       .eq('id', id)
       .maybeSingle()
-    
+
     if (error) throw error
     if (!producto) return null
-    
+
     const { data: categoria, error: catError } = await supabase
       .from('categorias')
       .select('nombre')
       .eq('id', producto.categoria_id)
       .maybeSingle()
-    
+
     if (catError) throw catError
-    
+
     return {
       ...producto,
       categoria_nombre: categoria?.nombre || 'Sin categoría'
@@ -151,7 +206,7 @@ export const productService = {
 
   async getByQrToken(qrToken: string): Promise<Product | null> {
     const supabase = createClient()
-    
+
     const { data, error } = await supabase
       .from('productos')
       .select(`
@@ -161,10 +216,10 @@ export const productService = {
       .eq('qr_token', qrToken)
       .eq('activo', true)
       .maybeSingle()
-    
+
     if (error) throw error
     if (!data) return null
-    
+
     return {
       ...data,
       categoria_nombre: data.categorias?.nombre || 'Sin categoría'
@@ -218,10 +273,6 @@ export const productService = {
     return urlData.publicUrl
   },
 
-  // ============================================================
-  // NUEVAS FUNCIONES PARA QR Y MOVIMIENTOS
-  // ============================================================
-
   async registrarMovimiento(data: {
     producto_id: string
     tipo_movimiento: 'entrada' | 'salida' | 'ajuste'
@@ -231,7 +282,7 @@ export const productService = {
     usuario_id: string
   }): Promise<MovimientoInventario> {
     const supabase = createClient()
-    
+
     const { data: result, error } = await supabase.rpc('registrar_movimiento_inventario', {
       p_producto_id: data.producto_id,
       p_tipo_movimiento: data.tipo_movimiento,
@@ -240,9 +291,9 @@ export const productService = {
       p_observaciones: data.observaciones || null,
       p_usuario_id: data.usuario_id
     })
-    
+
     if (error) throw error
-    
+
     return result as MovimientoInventario
   },
 
