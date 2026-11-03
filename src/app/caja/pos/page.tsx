@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { productService, Product, RecetaPOS } from '@/lib/services/productService'
 import { orderService } from '@/lib/services/orderService'
+import { cuentaService } from '@/lib/services/cuentaService'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
 import { useTurnoActivo } from '@/hooks/useTurnoActivo'
@@ -115,12 +116,18 @@ export default function CajaPOSPage() {
     mesaNombre: string
     meseroId: string
     meseroNombre: string
+    modoPago: 'agregar_cuenta' | 'pagar_ahora'
+    cuentaExistenteId: string | null
+    cuentaExistenteInfo: string | null
   }>({
     tipo: 'caja',
     mesaId: '',
     mesaNombre: '',
     meseroId: '',
-    meseroNombre: ''
+    meseroNombre: '',
+    modoPago: 'agregar_cuenta',
+    cuentaExistenteId: null,
+    cuentaExistenteInfo: null
   })
 
   useEffect(() => {
@@ -473,6 +480,41 @@ export default function CajaPOSPage() {
         tipo: item.tipo
       }))
 
+      let cuentaIdParaVincular: string | null = null
+
+      // Fase D: si es mesa y modo "agregar_cuenta", resolver cuenta
+      if (destino.tipo === 'mesa' && destino.modoPago === 'agregar_cuenta') {
+        if (destino.cuentaExistenteId) {
+          // Ya hay cuenta existente en esta mesa
+          cuentaIdParaVincular = destino.cuentaExistenteId
+        } else {
+          // No hay cuenta: abrir una nueva
+          if (!destino.meseroId) {
+            throw new Error('Selecciona un mesero para abrir la cuenta')
+          }
+          try {
+            const nuevaCuenta = await cuentaService.abrirCuenta(
+              destino.mesaId,
+              destino.meseroId,
+              1
+            )
+            cuentaIdParaVincular = nuevaCuenta.id
+          } catch (e: any) {
+            // Si la cuenta ya existe (race condition), recargar y usar la existente
+            if (e.message?.includes('Ya hay una cuenta abierta')) {
+              const cuentaExistente = await cuentaService.getCuentaActiva(destino.mesaId)
+              if (cuentaExistente?.id) {
+                cuentaIdParaVincular = cuentaExistente.id
+              } else {
+                throw new Error('No se pudo abrir ni encontrar la cuenta de la mesa')
+              }
+            } else {
+              throw e
+            }
+          }
+        }
+      }
+
       const result = await orderService.createOrder({
         mesero_id: user.id,
         meseroAsignadoId: destino.tipo === 'mesa' ? destino.meseroId : undefined,
@@ -481,10 +523,20 @@ export default function CajaPOSPage() {
         items,
         total,
         notas,
-        tipo_origen: 'caja'
+        tipo_origen: 'caja',
+        cuentaAbiertaId: cuentaIdParaVincular
       })
 
       if (!result) throw new Error('No se pudo crear el pedido')
+
+      // Si se creo o uso cuenta, vincular el pedido
+      if (cuentaIdParaVincular) {
+        try {
+          await cuentaService.vincularPedidoACuenta(result.id, cuentaIdParaVincular)
+        } catch (e) {
+          console.error('[handleCrearPedido] Error al vincular pedido a cuenta:', e)
+        }
+      }
 
       const mensajeDestino = destino.tipo === 'mesa'
         ? `Pedido enviado a ${destino.meseroNombre} para ${destino.mesaNombre}`
@@ -505,7 +557,10 @@ export default function CajaPOSPage() {
         mesaId: '',
         mesaNombre: '',
         meseroId: '',
-        meseroNombre: ''
+        meseroNombre: '',
+        modoPago: 'agregar_cuenta',
+        cuentaExistenteId: null,
+        cuentaExistenteInfo: null
       })
       await fetchData()
       setTimeout(() => router.push('/caja'), 1500)
