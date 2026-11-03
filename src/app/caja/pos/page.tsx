@@ -11,9 +11,12 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
+} from '@/components/ui/dialog'
+import {
   Search, Plus, Minus, Trash2, ShoppingCart,
   CreditCard, DollarSign, ArrowLeft, CheckCircle,
-  Loader2, AlertCircle, Wine, Beer, GlassWater, Droplet, Martini
+  Loader2, AlertCircle, Wine, Beer, GlassWater, Droplet, Martini, Gift
 } from 'lucide-react'
 import { productService, Product, RecetaPOS } from '@/lib/services/productService'
 import { orderService } from '@/lib/services/orderService'
@@ -23,9 +26,14 @@ import { useTurnoActivo } from '@/hooks/useTurnoActivo'
 import { AvisoNoActivo } from '@/components/shared/AvisoNoActivo'
 import { SeleccionDestino, TipoDestino } from '@/components/caja/SeleccionDestino'
 
+// IDs fijos de los dos mixers de regalo (confirmados en BD)
+const MIXER_AGUA_ID = 'c215aaba-febc-483d-968b-39c4d93c3a6d'
+const MIXER_REFRESCO_ID = '702a33df-688c-4b72-809c-33f9fe318f02'
+const MIXERS_GRATIS_POR_BOTELLA = 4
+
 interface CartItem {
   id: string
-  tipo: 'producto' | 'receta'
+  tipo: 'producto' | 'receta' | 'mixer_regalo'
   nombre: string
   marca?: string
   precio: number
@@ -86,6 +94,12 @@ export default function CajaPOSPage() {
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
 
+  // Modal de mixers
+  const [modalMixersOpen, setModalMixersOpen] = useState(false)
+  const [botellaParaMixers, setBotellaParaMixers] = useState<Product | null>(null)
+  const [mixerAgua, setMixerAgua] = useState(0)
+  const [mixerRefresco, setMixerRefresco] = useState(0)
+
   const [destino, setDestino] = useState<{
     tipo: TipoDestino
     mesaId: string
@@ -136,7 +150,6 @@ export default function CajaPOSPage() {
     }
   }
 
-  // Productos filtrados por tab activa
   const productosDelTab = useMemo(() => {
     if (tabActiva === 'cocteles') return []
     const tab = TABS.find(t => t.key === tabActiva)
@@ -152,7 +165,6 @@ export default function CajaPOSPage() {
     return recetas
   }, [recetas, tabActiva])
 
-  // Aplicar busqueda sobre lo del tab activo
   const productosFiltrados = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
     if (!term) return productosDelTab
@@ -177,6 +189,115 @@ export default function CajaPOSPage() {
     return productos.filter(p => tab.categorias.includes((p.categoria_nombre || '').toLowerCase())).length
   }
 
+  // Determina si un producto es una botella elegible para mixers
+  const esBotellaElegible = (producto: Product): boolean => {
+    const cat = (producto.categoria_nombre || '').toLowerCase()
+    return ['tequila', 'ron', 'whisky', 'vodka', 'mezcal', 'ginebra', 'licor', 'champagne'].includes(cat)
+  }
+
+  const addBotellaAlCarrito = (producto: Product) => {
+    const existing = cart.find(item => item.id === producto.id && item.tipo === 'producto')
+    if (existing) {
+      if (existing.cantidad >= producto.stock_actual) {
+        toast({
+          title: 'Stock insuficiente',
+          description: `Solo hay ${producto.stock_actual} unidades de ${producto.nombre}`,
+          variant: 'destructive'
+        })
+        return
+      }
+      setCart(cart.map(item =>
+        item.id === producto.id && item.tipo === 'producto'
+          ? { ...item, cantidad: item.cantidad + 1 }
+          : item
+      ))
+    } else {
+      setCart([...cart, {
+        id: producto.id,
+        tipo: 'producto',
+        nombre: producto.nombre,
+        marca: producto.marca,
+        precio: producto.precio_venta || 0,
+        cantidad: 1,
+        stock_disponible: producto.stock_actual
+      }])
+    }
+    // Abrir modal de mixers para esa botella
+    setBotellaParaMixers(producto)
+    setMixerAgua(0)
+    setMixerRefresco(0)
+    setModalMixersOpen(true)
+  }
+
+  const confirmarMixers = () => {
+    const totalMixers = mixerAgua + mixerRefresco
+    if (totalMixers > MIXERS_GRATIS_POR_BOTELLA) {
+      toast({
+        title: 'Demasiados mixers',
+        description: `Solo ${MIXERS_GRATIS_POR_BOTELLA} mixers de regalo por botella`,
+        variant: 'destructive'
+      })
+      return
+    }
+    const nuevos: CartItem[] = []
+    if (mixerAgua > 0) {
+      nuevos.push({
+        id: MIXER_AGUA_ID,
+        tipo: 'mixer_regalo',
+        nombre: 'Agua Mineral (regalo)',
+        marca: 'Topo Chico',
+        precio: 0,
+        cantidad: mixerAgua
+      })
+    }
+    if (mixerRefresco > 0) {
+      nuevos.push({
+        id: MIXER_REFRESCO_ID,
+        tipo: 'mixer_regalo',
+        nombre: 'Refresco Coca-Cola (regalo)',
+        marca: 'Coca-Cola',
+        precio: 0,
+        cantidad: mixerRefresco
+      })
+    }
+    // Agregar mixers: si ya hay un grupo de regalo de esta misma combinacion, sumar cantidades
+    const cartActual = [...cart]
+    for (const nuevo of nuevos) {
+      const existente = cartActual.find(c => c.id === nuevo.id && c.tipo === 'mixer_regalo')
+      if (existente) {
+        existente.cantidad += nuevo.cantidad
+      } else {
+        cartActual.push(nuevo)
+      }
+    }
+    setCart(cartActual)
+    setModalMixersOpen(false)
+    setBotellaParaMixers(null)
+    setMixerAgua(0)
+    setMixerRefresco(0)
+    toast({
+      title: 'Botella agregada',
+      description: totalMixers > 0
+        ? `Con ${totalMixers} mixer(s) de regalo`
+        : 'Sin mixers de regalo',
+      variant: 'success',
+      duration: 2500
+    })
+  }
+
+  const omitirMixers = () => {
+    setModalMixersOpen(false)
+    setBotellaParaMixers(null)
+    setMixerAgua(0)
+    setMixerRefresco(0)
+    toast({
+      title: 'Botella agregada',
+      description: 'Sin mixers de regalo',
+      variant: 'default',
+      duration: 2000
+    })
+  }
+
   const addProductoToCart = (producto: Product) => {
     if (producto.stock_actual <= 0) {
       toast({
@@ -186,6 +307,12 @@ export default function CajaPOSPage() {
       })
       return
     }
+    // Si es botella, dispara el modal de mixers
+    if (esBotellaElegible(producto)) {
+      addBotellaAlCarrito(producto)
+      return
+    }
+    // Si no es botella, flujo normal
     const existing = cart.find(item => item.id === producto.id && item.tipo === 'producto')
     if (existing) {
       if (existing.cantidad >= producto.stock_actual) {
@@ -233,11 +360,11 @@ export default function CajaPOSPage() {
     }
   }
 
-  const removeFromCart = (id: string, tipo: 'producto' | 'receta') => {
+  const removeFromCart = (id: string, tipo: 'producto' | 'receta' | 'mixer_regalo') => {
     setCart(cart.filter(item => !(item.id === id && item.tipo === tipo)))
   }
 
-  const updateQuantity = (id: string, tipo: 'producto' | 'receta', cantidad: number) => {
+  const updateQuantity = (id: string, tipo: 'producto' | 'receta' | 'mixer_regalo', cantidad: number) => {
     if (cantidad <= 0) {
       removeFromCart(id, tipo)
       return
@@ -252,6 +379,9 @@ export default function CajaPOSPage() {
         })
         return
       }
+    }
+    if (tipo === 'mixer_regalo' && cantidad > MIXERS_GRATIS_POR_BOTELLA * 10) {
+      return
     }
     setCart(cart.map(item =>
       item.id === id && item.tipo === tipo ? { ...item, cantidad } : item
@@ -268,6 +398,9 @@ export default function CajaPOSPage() {
   }
 
   const total = cart.reduce((sum, item) => sum + item.precio * item.cantidad, 0)
+  const totalRegalos = cart
+    .filter(i => i.tipo === 'mixer_regalo')
+    .reduce((sum, i) => sum + i.cantidad, 0)
 
   const cambio = metodoPago === 'efectivo'
     ? Math.max(0, parseFloat(efectivoRecibido || '0') - total)
@@ -506,10 +639,18 @@ export default function CajaPOSPage() {
                     {productosFiltrados.map(producto => (
                       <Card
                         key={producto.id}
-                        className="hover:shadow-lg hover:scale-[1.02] transition-all duration-200 border-2 hover:border-emerald-300 cursor-pointer"
+                        className={`hover:shadow-lg hover:scale-[1.02] transition-all duration-200 border-2 hover:border-emerald-300 cursor-pointer ${
+                          esBotellaElegible(producto) ? 'border-amber-200' : ''
+                        }`}
                         onClick={() => addProductoToCart(producto)}
                       >
                         <CardContent className="p-2 sm:p-3 text-center">
+                          {esBotellaElegible(producto) && (
+                            <Badge className="mb-1 text-[9px] bg-amber-100 text-amber-700 border-amber-300">
+                              <Gift className="h-2.5 w-2.5 mr-0.5" />
+                              +4 mixers
+                            </Badge>
+                          )}
                           <p className="font-medium text-xs sm:text-sm truncate" title={producto.nombre}>
                             {producto.nombre}
                           </p>
@@ -548,9 +689,17 @@ export default function CajaPOSPage() {
                   <ShoppingCart className="h-5 w-5" />
                   Pedido
                 </span>
-                <Badge className={cart.length > 0 ? 'bg-emerald-100 text-emerald-700' : ''}>
-                  {cart.length}
-                </Badge>
+                <div className="flex items-center gap-1">
+                  {totalRegalos > 0 && (
+                    <Badge className="bg-amber-100 text-amber-700 text-[10px]">
+                      <Gift className="h-3 w-3 mr-0.5" />
+                      {totalRegalos}
+                    </Badge>
+                  )}
+                  <Badge className={cart.length > 0 ? 'bg-emerald-100 text-emerald-700' : ''}>
+                    {cart.length}
+                  </Badge>
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -565,7 +714,14 @@ export default function CajaPOSPage() {
                     {cart.map((item) => (
                       <div key={`${item.tipo}-${item.id}`} className="flex items-center gap-2 border-b pb-2">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-xs truncate">{item.nombre}</p>
+                          <div className="flex items-center gap-1">
+                            <p className="font-medium text-xs truncate">{item.nombre}</p>
+                            {item.tipo === 'mixer_regalo' && (
+                              <Badge className="bg-amber-100 text-amber-700 text-[9px] px-1 py-0">
+                                Regalo
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-[10px] text-gray-500">
                             ${item.precio.toFixed(2)} x {item.cantidad} = <strong>${(item.precio * item.cantidad).toFixed(2)}</strong>
                           </p>
@@ -696,6 +852,125 @@ export default function CajaPOSPage() {
           </Card>
         </div>
       </div>
+
+      {/* Modal de mixers de regalo */}
+      <Dialog open={modalMixersOpen} onOpenChange={(open) => {
+        if (!open) omitirMixers()
+      }}>
+        <DialogContent className="max-w-md w-[95vw] sm:w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Gift className="h-5 w-5 text-amber-600" />
+              Mixers de regalo
+            </DialogTitle>
+            <DialogDescription className="text-sm">
+              {botellaParaMixers?.nombre} incluye {MIXERS_GRATIS_POR_BOTELLA} mixers gratis.
+              Elige cuantos quieres.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+              <p className="text-xs text-amber-800">
+                Llevas <strong>{mixerAgua + mixerRefresco} de {MIXERS_GRATIS_POR_BOTELLA}</strong> mixers gratis
+                {mixerAgua + mixerRefresco === MIXERS_GRATIS_POR_BOTELLA && ' (completo)'}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between border rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <Droplet className="h-5 w-5 text-blue-500" />
+                <div>
+                  <p className="font-medium text-sm">Agua Mineral</p>
+                  <p className="text-[10px] text-gray-500">Topo Chico - Gratis</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setMixerAgua(Math.max(0, mixerAgua - 1))}
+                  disabled={mixerAgua <= 0}
+                >
+                  <Minus className="h-3 w-3" />
+                </Button>
+                <span className="w-8 text-center font-bold">{mixerAgua}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => {
+                    if (mixerAgua + mixerRefresco < MIXERS_GRATIS_POR_BOTELLA) {
+                      setMixerAgua(mixerAgua + 1)
+                    }
+                  }}
+                  disabled={mixerAgua + mixerRefresco >= MIXERS_GRATIS_POR_BOTELLA}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <Droplet className="h-5 w-5 text-red-500" />
+                <div>
+                  <p className="font-medium text-sm">Refresco (Coca-Cola)</p>
+                  <p className="text-[10px] text-gray-500">Gratis</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setMixerRefresco(Math.max(0, mixerRefresco - 1))}
+                  disabled={mixerRefresco <= 0}
+                >
+                  <Minus className="h-3 w-3" />
+                </Button>
+                <span className="w-8 text-center font-bold">{mixerRefresco}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0"
+                  onClick={() => {
+                    if (mixerAgua + mixerRefresco < MIXERS_GRATIS_POR_BOTELLA) {
+                      setMixerRefresco(mixerRefresco + 1)
+                    }
+                  }}
+                  disabled={mixerAgua + mixerRefresco >= MIXERS_GRATIS_POR_BOTELLA}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-gray-500 text-center pt-2">
+              Si quieres mas de {MIXERS_GRATIS_POR_BOTELLA}, agregalos desde el tab Servicios
+              y se cobraran a precio normal.
+            </p>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={omitirMixers}
+              >
+                Omitir
+              </Button>
+              <Button
+                className="flex-1 bg-amber-600 hover:bg-amber-700"
+                onClick={confirmarMixers}
+              >
+                <Gift className="h-4 w-4 mr-1" />
+                Agregar {mixerAgua + mixerRefresco}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
