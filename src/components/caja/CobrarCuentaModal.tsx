@@ -21,6 +21,7 @@ import {
   CuentaAbierta,
   CuentaConPedidos
 } from '@/lib/services/cuentaService'
+import { ventaService } from '@/lib/services/ventaService'
 
 interface CobrarCuentaModalProps {
   cuenta: CuentaAbierta | null
@@ -43,6 +44,7 @@ export function CobrarCuentaModal({
   const [detalle, setDetalle] = useState<CuentaConPedidos | null>(null)
   const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo')
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
+  const [propina, setPropina] = useState('')
 
   useEffect(() => {
     if (isOpen && cuenta) {
@@ -67,14 +69,16 @@ export function CobrarCuentaModal({
     if (!cuenta || !detalle) return
 
     const total = detalle.total_actual
+    const propinaNum = parseFloat(propina || '0') || 0
+
     if (
       metodoPago === 'efectivo' &&
-      parseFloat(efectivoRecibido || '0') < total
+      parseFloat(efectivoRecibido || '0') < total + propinaNum
     ) {
       toast({
         title: 'Efectivo insuficiente',
         description: `Faltan $${(
-          total - parseFloat(efectivoRecibido || '0')
+          total + propinaNum - parseFloat(efectivoRecibido || '0')
         ).toFixed(2)}`,
         variant: 'destructive'
       })
@@ -83,15 +87,29 @@ export function CobrarCuentaModal({
 
     setLoading(true)
     try {
+      const efectivoNum = parseFloat(efectivoRecibido || '0') || 0
+
+      // 1. Registrar la venta ANTES de cerrar la cuenta
+      await ventaService.registrarVentaDesdeCuenta(
+        cuenta.id,
+        metodoPago,
+        efectivoNum,
+        propinaNum
+      )
+
+      // 2. Cerrar la cuenta (libera mesa, marca pedidos como servidos)
       await cuentaService.cerrarCuenta(cuenta.id)
 
       toast({
         title: 'Cuenta cobrada',
-        description: `Mesa ${detalle.mesa?.numero} cobrada: $${total.toFixed(2)}`,
+        description: `Mesa ${detalle.mesa?.numero} cobrada: $${total.toFixed(2)}${
+          propinaNum > 0 ? ` (propina: $${propinaNum.toFixed(2)})` : ''
+        }`,
         variant: 'success'
       })
 
       setEfectivoRecibido('')
+      setPropina('')
       onSuccess?.()
       onClose()
     } catch (error: any) {
@@ -107,15 +125,17 @@ export function CobrarCuentaModal({
 
   if (!cuenta) return null
 
+  const propinaNum = parseFloat(propina || '0') || 0
   const cambio =
     metodoPago === 'efectivo'
       ? Math.max(
           0,
-          parseFloat(efectivoRecibido || '0') - (detalle?.total_actual || 0)
+          parseFloat(efectivoRecibido || '0') -
+            (detalle?.total_actual || 0) -
+            propinaNum
         )
       : 0
 
-  // Info del mesero (si ya registró cobro)
   const efectivoMesero = Number(detalle?.efectivo_recibido || 0)
   const cambioMesero = Number(detalle?.cambio_entregado || 0)
   const meseroYaCobro = efectivoMesero > 0
@@ -143,7 +163,6 @@ export function CobrarCuentaModal({
           </div>
         ) : detalle ? (
           <div className="p-4 sm:p-6 space-y-4">
-            {/* Info de la cuenta */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -167,7 +186,6 @@ export function CobrarCuentaModal({
               </div>
             </div>
 
-            {/* Aviso si el mesero ya registró cobro */}
             {meseroYaCobro && (
               <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-3 space-y-2">
                 <div className="flex items-start gap-2">
@@ -202,7 +220,6 @@ export function CobrarCuentaModal({
               </div>
             )}
 
-            {/* Lista de items */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
@@ -264,7 +281,6 @@ export function CobrarCuentaModal({
               </div>
             </div>
 
-            {/* Total */}
             <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-emerald-900">
@@ -276,7 +292,6 @@ export function CobrarCuentaModal({
               </div>
             </div>
 
-            {/* Método de pago */}
             <div className="space-y-2">
               <Label className="text-xs font-medium">Metodo de pago</Label>
               <div className="grid grid-cols-3 gap-2">
@@ -324,7 +339,20 @@ export function CobrarCuentaModal({
               </div>
             </div>
 
-            {/* Efectivo recibido */}
+            <div className="space-y-2">
+              <Label htmlFor="propina" className="text-xs">
+                Propina (opcional)
+              </Label>
+              <Input
+                id="propina"
+                type="number"
+                placeholder="0.00"
+                value={propina}
+                onChange={(e) => setPropina(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
             {metodoPago === 'efectivo' && (
               <div className="space-y-2">
                 <Label htmlFor="efectivo" className="text-xs">
@@ -352,7 +380,6 @@ export function CobrarCuentaModal({
               </div>
             )}
 
-            {/* Botones */}
             <div className="flex flex-col-reverse sm:flex-row gap-2 pt-3 border-t">
               <Button
                 variant="outline"

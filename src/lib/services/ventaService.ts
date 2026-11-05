@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/client'
+import { cuentaService } from './cuentaService'
 
 // ============================================================
 // SERVICIO DE VENTAS
-// Consulta y gestión de ventas históricas para el admin
+// Consulta y gestion de ventas historicas para el admin
 // ============================================================
 
 export interface Venta {
@@ -25,7 +26,6 @@ export interface Venta {
   sucursal_id: string | null
   monto_recibido: number | null
   monto_cambio: number | null
-  // Relaciones
   mesero?: { nombre: string; apellido: string } | null
   cajero?: { nombre: string; apellido: string } | null
   bartender?: { nombre_completo: string } | null
@@ -90,7 +90,6 @@ export const ventaService = {
       .order('created_at', { ascending: false })
       .limit(500)
 
-    // Filtro por rango de fechas
     if (filtros.fechaInicio) {
       query = query.gte('created_at', filtros.fechaInicio)
     }
@@ -98,7 +97,6 @@ export const ventaService = {
       query = query.lte('created_at', filtros.fechaFin)
     }
 
-    // Filtros por IDs
     if (filtros.jornadaId) query = query.eq('jornada_id', filtros.jornadaId)
     if (filtros.meseroId) query = query.eq('mesero_id', filtros.meseroId)
     if (filtros.cajeroId) query = query.eq('cajero_id', filtros.cajeroId)
@@ -115,7 +113,6 @@ export const ventaService = {
 
     let ventas = (data || []) as Venta[]
 
-    // Filtro de búsqueda por ID o nombre de mesero (post-query)
     if (filtros.searchTerm) {
       const term = filtros.searchTerm.toLowerCase()
       ventas = ventas.filter(v =>
@@ -160,7 +157,7 @@ export const ventaService = {
   },
 
   /**
-   * Calcula estadísticas de las ventas filtradas
+   * Calcula estadisticas de las ventas filtradas
    */
   async getStats(filtros: VentaFiltros = {}): Promise<VentaStats> {
     const ventas = await this.getVentas(filtros)
@@ -188,7 +185,7 @@ export const ventaService = {
   },
 
   /**
-   * Obtiene las últimas N ventas para el widget del dashboard
+   * Obtiene las ultimas N ventas para el widget del dashboard
    */
   async getUltimasVentas(limit = 5): Promise<Venta[]> {
     const supabase = createClient()
@@ -203,7 +200,7 @@ export const ventaService = {
       .limit(limit)
 
     if (error) {
-      console.error('Error al obtener últimas ventas:', error)
+      console.error('Error al obtener ultimas ventas:', error)
       return []
     }
 
@@ -233,6 +230,110 @@ export const ventaService = {
       cajeros: (cajerosRes.data || []).map(c => ({ id: c.id, nombre: `${c.nombre} ${c.apellido}` })),
       bartenders: (bartendersRes.data || []).map(b => ({ id: b.usuario_id, nombre: b.nombre_completo })),
       jornadas: jornadasRes.data || []
+    }
+  },
+
+  /**
+   * Registra una venta al cobrar una cuenta abierta.
+   * Inserta UNA fila en `ventas` con el total, propina, metodo de pago,
+   * efectivo recibido, cambio, cajero y jornada.
+   * NO toca inventario (eso ya lo hace descontar_inventario_por_pedido al crear el pedido).
+   * Devuelve el id de la venta creada.
+   */
+  async registrarVentaDesdeCuenta(
+    cuentaId: string,
+    metodoPago: 'efectivo' | 'tarjeta' | 'transferencia',
+    efectivoRecibido: number = 0,
+    propina: number = 0
+  ): Promise<{ id: string; total: number; propina: number }> {
+    const supabase = createClient()
+
+    // 1. Cargar cuenta con pedidos
+    const cuenta = await cuentaService.getCuentaConPedidos(cuentaId)
+    if (!cuenta) {
+      throw new Error('Cuenta no encontrada')
+    }
+
+    const total = Number(cuenta.total_actual || 0)
+    if (total <= 0) {
+      throw new Error('La cuenta no tiene total a cobrar')
+    }
+
+    const propinaFinal = Number(propina || 0)
+    if (propinaFinal < 0) {
+      throw new Error('La propina no puede ser negativa')
+    }
+
+    // 2. Heredar bartender_id desde el primer pedido que lo tenga
+    let bartenderId: string | null = null
+    for (const pedido of cuenta.pedidos) {
+      const { data: pedidoFull } = await supabase
+        .from('pedidos')
+        .select('bartender_id')
+        .eq('id', pedido.id)
+        .maybeSingle()
+      if (pedidoFull?.bartender_id) {
+        bartenderId = pedidoFull.bartender_id
+        break
+      }
+    }
+
+    // 3. Calcular monto_recibido y monto_cambio
+    const esEfectivo = metodoPago === 'efectivo'
+    const montoRecibido = esEfectivo
+      ? Number(efectivoRecibido || 0)
+      : total + propinaFinal
+    const montoCambio = esEfectivo
+      ? Math.max(0, montoRecibido - total - propinaFinal)
+      : 0
+
+    if (esEfectivo && montoRecibido < total + propinaFinal) {
+      throw new Error('El efectivo recibido es insuficiente')
+    }
+
+    // 4. Cajero = usuario logueado actualmente
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      throw new Error('No hay usuario autenticado')
+    }
+
+    // 5. Insertar la venta
+    const { data, error } = await supabase
+      .from('ventas')
+      .insert([{
+        receta_id: null,
+        bartender_id: bartenderId,
+        mesero_id: cuenta.mesero_id,
+        sucursal_id: null,
+        cierre_caja_id: null,
+        total,
+        total_pagado: total + propinaFinal,
+        propina: propinaFinal,
+        metodo_pago: metodoPago,
+        estado: 'completada',
+        jornada_id: cuenta.jornada_id,
+        cajero_id: user.id,
+        caja_fisica_id: null,
+        sesion_caja_id: null,
+        monto_recibido: montoRecibido,
+        monto_cambio: montoCambio,
+        descuento: 0,
+        impuestos: 0
+      }])
+      .select('id, total, propina')
+      .maybeSingle()
+
+    if (error) {
+      throw new Error('No se pudo registrar la venta: ' + error.message)
+    }
+    if (!data) {
+      throw new Error('No se pudo registrar la venta')
+    }
+
+    return {
+      id: data.id,
+      total: Number(data.total),
+      propina: Number(data.propina)
     }
   }
 }
