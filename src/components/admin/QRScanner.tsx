@@ -1,17 +1,19 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Camera, Keyboard, RefreshCw, AlertCircle } from 'lucide-react'
+import {
+  Camera, Keyboard, RefreshCw, AlertCircle,
+  SwitchCamera, ScanLine
+} from 'lucide-react'
 
-// Importación dinámica del scanner para evitar SSR
 const Scanner = dynamic(
   () => import('@yudiel/react-qr-scanner').then((mod) => mod.Scanner),
-  { 
+  {
     ssr: false,
     loading: () => (
       <div className="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
@@ -27,29 +29,29 @@ interface QRScannerProps {
   title?: string
 }
 
-export function QRScanner({ onScan, onError, title = 'Escanear Código QR' }: QRScannerProps) {
+export function QRScanner({ onScan, onError, title = 'Escanear Codigo QR' }: QRScannerProps) {
   const [scanning, setScanning] = useState(true)
   const [manualCode, setManualCode] = useState('')
   const [error, setError] = useState('')
   const [lastScan, setLastScan] = useState<string>('')
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
+  const scannerKeyRef = useRef(0)
 
   const handleScan = (result: any) => {
     if (result && result[0]?.rawValue) {
       const value = result[0].rawValue
-      
-      // Evitar escaneos duplicados en un corto periodo
       if (value === lastScan) return
-      
       setLastScan(value)
+      setError('')
       onScan(value)
-      
-      // Resetear después de 3 segundos
       setTimeout(() => setLastScan(''), 3000)
     }
   }
 
   const handleError = (err: any) => {
-    const message = err?.message || 'Error al acceder a la cámara. Verifica los permisos.'
+    const message =
+      err?.message ||
+      'No se pudo acceder a la camara. Verifica los permisos del navegador.'
     setError(message)
     onError?.(message)
   }
@@ -62,6 +64,12 @@ export function QRScanner({ onScan, onError, title = 'Escanear Código QR' }: QR
     }
   }
 
+  const cambiarCamara = () => {
+    setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))
+    scannerKeyRef.current += 1
+    setError('')
+  }
+
   return (
     <div className="space-y-4">
       {scanning ? (
@@ -72,23 +80,34 @@ export function QRScanner({ onScan, onError, title = 'Escanear Código QR' }: QR
                 <Camera className="h-5 w-5 text-emerald-600" />
                 {title}
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setScanning(false)}
-              >
-                <Keyboard className="h-4 w-4 mr-1" />
-                Manual
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={cambiarCamara}
+                  title="Cambiar camara"
+                >
+                  <SwitchCamera className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setScanning(false)}
+                >
+                  <Keyboard className="h-4 w-4 mr-1" />
+                  Manual
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg overflow-hidden bg-black">
+            <div className="relative rounded-lg overflow-hidden bg-black">
               <Scanner
+                key={scannerKeyRef.current}
                 onScan={handleScan}
                 onError={handleError}
                 constraints={{
-                  facingMode: 'environment',
+                  facingMode,
                   aspectRatio: 1
                 }}
                 styles={{
@@ -96,11 +115,15 @@ export function QRScanner({ onScan, onError, title = 'Escanear Código QR' }: QR
                   video: { width: '100%', height: '100%', objectFit: 'cover' }
                 }}
               />
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-56 h-56 border-2 border-emerald-400/80 rounded-lg shadow-lg" />
+              </div>
             </div>
-            
-            <p className="text-center text-sm text-gray-500 mt-4">
-              Apunta la cámara hacia el código QR del producto
-            </p>
+
+            <div className="flex items-center justify-center gap-2 mt-4 text-sm text-gray-500">
+              <ScanLine className="h-4 w-4 text-emerald-600" />
+              <span>Apunta la camara hacia el codigo QR del producto</span>
+            </div>
 
             {error && (
               <Alert variant="destructive" className="mt-4">
@@ -115,13 +138,13 @@ export function QRScanner({ onScan, onError, title = 'Escanear Código QR' }: QR
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Keyboard className="h-5 w-5 text-emerald-600" />
-              Código Manual
+              Codigo Manual
             </CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleManualSubmit} className="space-y-4">
               <Input
-                placeholder="Ingresa el código QR del producto"
+                placeholder="Ingresa el codigo QR del producto"
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value)}
                 autoFocus
