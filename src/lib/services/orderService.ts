@@ -33,19 +33,10 @@ export interface CrearPedidoResult {
   sin_bartender: boolean
 }
 
-/**
- * Busca el bartender que debe atender un pedido nuevo.
- * Prioridad:
- *   1. turno_activo = true AND disponible = true
- *   2. turno_activo = true
- *   3. activo = true (fallback)
- * Devuelve null si no hay ninguno.
- */
 async function resolverBartenderAsignable(
   supabase: ReturnType<typeof createClient>
 ): Promise<string | null> {
   try {
-    // Prioridad 1: en turno y disponible
     const { data: p1 } = await supabase
       .from('bartenders')
       .select('id')
@@ -56,7 +47,6 @@ async function resolverBartenderAsignable(
       .maybeSingle()
     if (p1?.id) return p1.id
 
-    // Prioridad 2: en turno
     const { data: p2 } = await supabase
       .from('bartenders')
       .select('id')
@@ -66,7 +56,6 @@ async function resolverBartenderAsignable(
       .maybeSingle()
     if (p2?.id) return p2.id
 
-    // Prioridad 3: activo (aunque no esté en turno)
     const { data: p3 } = await supabase
       .from('bartenders')
       .select('id')
@@ -78,6 +67,11 @@ async function resolverBartenderAsignable(
     console.warn('[orderService] Error buscando bartender asignable:', e)
     return null
   }
+}
+
+function normalizarNombreMesa(mesa: string | null | undefined): string {
+  if (!mesa) return 'N/A'
+  return mesa.trim().replace(/^mesa\s+/i, '') || 'N/A'
 }
 
 export const orderService = {
@@ -173,7 +167,6 @@ export const orderService = {
 
     const meseroFinalId = order.meseroAsignadoId || order.mesero_id
 
-    // Resolver jornada si no vino explícita
     let jornadaId = order.jornadaId
     if (jornadaId === undefined) {
       const { data: jornada } = await supabase
@@ -184,7 +177,6 @@ export const orderService = {
       jornadaId = jornada?.id || null
     }
 
-    // FIX: resolver bartender ANTES del insert para guardarlo en la fila
     const bartenderAsignadoId = await resolverBartenderAsignable(supabase)
 
     const { data, error } = await supabase
@@ -192,7 +184,7 @@ export const orderService = {
       .insert([
         {
           mesero_id: meseroFinalId,
-          bartender_id: bartenderAsignadoId, // FIX: antes faltaba
+          bartender_id: bartenderAsignadoId,
           mesa: order.mesa || 'Caja',
           items: order.items,
           total: order.total,
@@ -210,9 +202,6 @@ export const orderService = {
     if (error) throw new Error('No se pudo crear el pedido: ' + error.message)
     if (!data) throw new Error('No se pudo crear el pedido')
 
-    // ============================================================
-    // NOTIFICAR AL BARTENDER (si se pudo asignar)
-    // ============================================================
     if (bartenderAsignadoId) {
       try {
         await supabase.from('notificaciones_bartender').insert([
@@ -236,9 +225,6 @@ export const orderService = {
       )
     }
 
-    // ============================================================
-    // NOTIFICAR AL MESERO ASIGNADO (si es diferente al que creó)
-    // ============================================================
     if (order.meseroAsignadoId && order.meseroAsignadoId !== order.mesero_id) {
       try {
         await notificationService.notificarMesero({
@@ -252,9 +238,6 @@ export const orderService = {
       }
     }
 
-    // ============================================================
-    // NOTIFICAR AYUDA AL MESERO TITULAR (si aplica)
-    // ============================================================
     if (order.ayudadoPorId && order.ayudadoPorId !== meseroFinalId) {
       try {
         const { data: ayudante } = await supabase
@@ -281,9 +264,6 @@ export const orderService = {
       }
     }
 
-    // ============================================================
-    // DESCONTAR INVENTARIO (best-effort)
-    // ============================================================
     try {
       const { data: invResult, error: invError } = await supabase.rpc(
         'descontar_inventario_por_pedido',
@@ -353,6 +333,15 @@ export const orderService = {
 
   async cancelOrder(id: string, motivo: string, usuarioId: string): Promise<void> {
     const supabase = createClient()
+
+    // 1. Cargar datos del pedido antes de cancelarlo (para el mensaje al admin)
+    const { data: pedidoInfo } = await supabase
+      .from('pedidos')
+      .select('id, mesa, total, jornada_id, mesero_id, items')
+      .eq('id', id)
+      .maybeSingle()
+
+    // 2. Cancelar el pedido
     const { error } = await supabase
       .from('pedidos')
       .update({
@@ -365,6 +354,60 @@ export const orderService = {
       .eq('id', id)
     if (error) throw new Error('No se pudo cancelar el pedido')
 
+    // 3. Notificar a TODOS los admins
+    try {
+      const { data: admins } = await supabase
+        .from('usuarios')
+        .select('id')
+        .eq('rol', 'admin')
+        .eq('activo', true)
+
+      if (admins && admins.length > 0) {
+        const { data: cancelador } = await supabase
+          .from('usuarios')
+          .select('nombre, apellido, rol')
+          .eq('id', usuarioId)
+          .maybeSingle()
+
+        const nombreCancelador = cancelador
+          ? `${cancelador.nombre || ''} ${cancelador.apellido || ''}`.trim()
+          : 'Usuario'
+        const rolCancelador = cancelador?.rol || ''
+
+        const mesa = normalizarNombreMesa(pedidoInfo?.mesa)
+        const total = Number(pedidoInfo?.total || 0)
+        const itemsCount = Array.isArray(pedidoInfo?.items)
+          ? (pedidoInfo.items as any[]).reduce(
+              (s: number, it: any) => s + (Number(it.cantidad) || 0),
+              0
+            )
+          : 0
+
+        const mensaje = `Pedido cancelado: Mesa ${mesa} - $${total.toFixed(2)} (${itemsCount} items) por ${nombreCancelador} (${rolCancelador}) - Motivo: ${motivo}`
+
+        const notificaciones = admins.map((a: any) => ({
+          pedido_id: id,
+          usuario_id: a.id,
+          tipo: 'pedido_cancelado',
+          mensaje,
+          motivo,
+          leida: false,
+          jornada_id: pedidoInfo?.jornada_id || null
+        }))
+
+        const { error: notifError } = await supabase
+          .from('notificaciones_admin')
+          .insert(notificaciones)
+
+        if (notifError) {
+          console.warn('[cancelOrder] No se pudo insertar notificacion admin:', notifError)
+        }
+      }
+    } catch (e) {
+      console.warn('[cancelOrder] Excepcion al notificar admins:', e)
+    }
+
+    // 4. Revertir inventario
     try {
       const { data: revResult, error: revError } = await supabase.rpc(
         'revertir_inventario_por_pedido',
