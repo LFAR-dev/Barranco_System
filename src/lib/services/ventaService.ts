@@ -3,7 +3,7 @@ import { cuentaService } from './cuentaService'
 
 // ============================================================
 // SERVICIO DE VENTAS
-// Consulta y gestion de ventas historicas para el admin
+// Consulta, gestion de ventas historicas, cancelaciones y reportes
 // ============================================================
 
 export interface Venta {
@@ -68,10 +68,36 @@ export interface VentaStats {
   canceladasMonto: number
 }
 
+export interface Cancelacion {
+  id: string
+  mesa: string | null
+  total: number
+  motivo_cancelacion: string | null
+  cancelado_por: string | null
+  cancelado_en: string | null
+  created_at: string
+  jornada_id: string | null
+  mesero_id: string | null
+  mesero_nombre: string
+  cancelador_nombre: string
+  cancelador_rol: string
+}
+
+export interface PropinaPorMesero {
+  mesero_id: string
+  nombre: string
+  ventas_count: number
+  total: number
+  propinas: number
+}
+
+export interface DesgloseMetodosPago {
+  efectivo: { count: number; total: number }
+  tarjeta: { count: number; total: number }
+  transferencia: { count: number; total: number }
+}
+
 export const ventaService = {
-  /**
-   * Obtiene ventas con filtros avanzados
-   */
   async getVentas(filtros: VentaFiltros = {}): Promise<Venta[]> {
     const supabase = createClient()
 
@@ -90,13 +116,8 @@ export const ventaService = {
       .order('created_at', { ascending: false })
       .limit(500)
 
-    if (filtros.fechaInicio) {
-      query = query.gte('created_at', filtros.fechaInicio)
-    }
-    if (filtros.fechaFin) {
-      query = query.lte('created_at', filtros.fechaFin)
-    }
-
+    if (filtros.fechaInicio) query = query.gte('created_at', filtros.fechaInicio)
+    if (filtros.fechaFin) query = query.lte('created_at', filtros.fechaFin)
     if (filtros.jornadaId) query = query.eq('jornada_id', filtros.jornadaId)
     if (filtros.meseroId) query = query.eq('mesero_id', filtros.meseroId)
     if (filtros.cajeroId) query = query.eq('cajero_id', filtros.cajeroId)
@@ -127,9 +148,6 @@ export const ventaService = {
     return ventas
   },
 
-  /**
-   * Obtiene una venta con su detalle completo
-   */
   async getVentaById(id: string): Promise<VentaDetalle | null> {
     const supabase = createClient()
 
@@ -156,9 +174,6 @@ export const ventaService = {
     return data as VentaDetalle
   },
 
-  /**
-   * Calcula estadisticas de las ventas filtradas
-   */
   async getStats(filtros: VentaFiltros = {}): Promise<VentaStats> {
     const ventas = await this.getVentas(filtros)
 
@@ -184,9 +199,6 @@ export const ventaService = {
     }
   },
 
-  /**
-   * Obtiene las ultimas N ventas para el widget del dashboard
-   */
   async getUltimasVentas(limit = 5): Promise<Venta[]> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -207,9 +219,6 @@ export const ventaService = {
     return (data || []) as Venta[]
   },
 
-  /**
-   * Obtiene listas para filtros (meseros, cajeros, bartenders, jornadas)
-   */
   async getFiltrosDisponibles(): Promise<{
     meseros: Array<{ id: string; nombre: string }>
     cajeros: Array<{ id: string; nombre: string }>
@@ -233,13 +242,6 @@ export const ventaService = {
     }
   },
 
-  /**
-   * Registra una venta al cobrar una cuenta abierta.
-   * Inserta UNA fila en `ventas` con el total, propina, metodo de pago,
-   * efectivo recibido, cambio, cajero y jornada.
-   * NO toca inventario (eso ya lo hace descontar_inventario_por_pedido al crear el pedido).
-   * Devuelve el id de la venta creada.
-   */
   async registrarVentaDesdeCuenta(
     cuentaId: string,
     metodoPago: 'efectivo' | 'tarjeta' | 'transferencia',
@@ -248,23 +250,15 @@ export const ventaService = {
   ): Promise<{ id: string; total: number; propina: number }> {
     const supabase = createClient()
 
-    // 1. Cargar cuenta con pedidos
     const cuenta = await cuentaService.getCuentaConPedidos(cuentaId)
-    if (!cuenta) {
-      throw new Error('Cuenta no encontrada')
-    }
+    if (!cuenta) throw new Error('Cuenta no encontrada')
 
     const total = Number(cuenta.total_actual || 0)
-    if (total <= 0) {
-      throw new Error('La cuenta no tiene total a cobrar')
-    }
+    if (total <= 0) throw new Error('La cuenta no tiene total a cobrar')
 
     const propinaFinal = Number(propina || 0)
-    if (propinaFinal < 0) {
-      throw new Error('La propina no puede ser negativa')
-    }
+    if (propinaFinal < 0) throw new Error('La propina no puede ser negativa')
 
-    // 2. Heredar bartender_id desde el primer pedido que lo tenga
     let bartenderId: string | null = null
     for (const pedido of cuenta.pedidos) {
       const { data: pedidoFull } = await supabase
@@ -278,26 +272,17 @@ export const ventaService = {
       }
     }
 
-    // 3. Calcular monto_recibido y monto_cambio
     const esEfectivo = metodoPago === 'efectivo'
-    const montoRecibido = esEfectivo
-      ? Number(efectivoRecibido || 0)
-      : total + propinaFinal
-    const montoCambio = esEfectivo
-      ? Math.max(0, montoRecibido - total - propinaFinal)
-      : 0
+    const montoRecibido = esEfectivo ? Number(efectivoRecibido || 0) : total + propinaFinal
+    const montoCambio = esEfectivo ? Math.max(0, montoRecibido - total - propinaFinal) : 0
 
     if (esEfectivo && montoRecibido < total + propinaFinal) {
       throw new Error('El efectivo recibido es insuficiente')
     }
 
-    // 4. Cajero = usuario logueado actualmente
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      throw new Error('No hay usuario autenticado')
-    }
+    if (!user) throw new Error('No hay usuario autenticado')
 
-    // 5. Insertar la venta
     const { data, error } = await supabase
       .from('ventas')
       .insert([{
@@ -323,17 +308,125 @@ export const ventaService = {
       .select('id, total, propina')
       .maybeSingle()
 
-    if (error) {
-      throw new Error('No se pudo registrar la venta: ' + error.message)
-    }
-    if (!data) {
-      throw new Error('No se pudo registrar la venta')
-    }
+    if (error) throw new Error('No se pudo registrar la venta: ' + error.message)
+    if (!data) throw new Error('No se pudo registrar la venta')
 
     return {
       id: data.id,
       total: Number(data.total),
       propina: Number(data.propina)
     }
+  },
+
+  /**
+   * Obtiene las cancelaciones (pedidos cancelados) con datos del mesero
+   * y del usuario que cancelo.
+   */
+  async getCancelaciones(filtros: VentaFiltros = {}): Promise<Cancelacion[]> {
+    const supabase = createClient()
+
+    let query = supabase
+      .from('pedidos')
+      .select(`
+        id, mesa, total, motivo_cancelacion, cancelado_por, cancelado_en,
+        created_at, jornada_id, mesero_id,
+        mesero:usuarios!mesero_id(nombre, apellido),
+        cancelador:usuarios!cancelado_por(nombre, apellido, rol)
+      `)
+      .eq('estado', 'cancelado')
+      .order('cancelado_en', { ascending: false, nullsFirst: false })
+      .limit(500)
+
+    if (filtros.fechaInicio) query = query.gte('cancelado_en', filtros.fechaInicio)
+    if (filtros.fechaFin) query = query.lte('cancelado_en', filtros.fechaFin)
+    if (filtros.jornadaId) query = query.eq('jornada_id', filtros.jornadaId)
+    if (filtros.meseroId) query = query.eq('mesero_id', filtros.meseroId)
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error('Error al obtener cancelaciones:', error)
+      return []
+    }
+
+    return (data || []).map((p: any) => ({
+      id: p.id,
+      mesa: p.mesa,
+      total: Number(p.total) || 0,
+      motivo_cancelacion: p.motivo_cancelacion,
+      cancelado_por: p.cancelado_por,
+      cancelado_en: p.cancelado_en,
+      created_at: p.created_at,
+      jornada_id: p.jornada_id,
+      mesero_id: p.mesero_id,
+      mesero_nombre: p.mesero
+        ? `${p.mesero.nombre || ''} ${p.mesero.apellido || ''}`.trim()
+        : 'Sin mesero',
+      cancelador_nombre: p.cancelador
+        ? `${p.cancelador.nombre || ''} ${p.cancelador.apellido || ''}`.trim()
+        : 'Sin usuario',
+      cancelador_rol: p.cancelador?.rol || ''
+    }))
+  },
+
+  /**
+   * Agrupa ventas por mesero, sumando total y propinas.
+   */
+  async getPropinasPorMesero(filtros: VentaFiltros = {}): Promise<PropinaPorMesero[]> {
+    const ventas = await this.getVentas(filtros)
+    const mapa = new Map<string, PropinaPorMesero>()
+
+    for (const v of ventas) {
+      if (v.estado === 'cancelada') continue
+      const key = v.mesero_id || 'sin_mesero'
+      const nombre = v.mesero
+        ? `${v.mesero.nombre || ''} ${v.mesero.apellido || ''}`.trim()
+        : 'Sin mesero'
+
+      if (!mapa.has(key)) {
+        mapa.set(key, {
+          mesero_id: key,
+          nombre,
+          ventas_count: 0,
+          total: 0,
+          propinas: 0
+        })
+      }
+      const entry = mapa.get(key)!
+      entry.ventas_count += 1
+      entry.total += v.total || 0
+      entry.propinas += v.propina || 0
+    }
+
+    return Array.from(mapa.values()).sort((a, b) => b.total - a.total)
+  },
+
+  /**
+   * Devuelve el desglose por metodo de pago: count y total.
+   */
+  async getDesgloseMetodosPago(filtros: VentaFiltros = {}): Promise<DesgloseMetodosPago> {
+    const ventas = await this.getVentas(filtros)
+    const desglose: DesgloseMetodosPago = {
+      efectivo: { count: 0, total: 0 },
+      tarjeta: { count: 0, total: 0 },
+      transferencia: { count: 0, total: 0 }
+    }
+
+    for (const v of ventas) {
+      if (v.estado === 'cancelada') continue
+      const m = v.metodo_pago
+      if (m === 'efectivo') {
+        desglose.efectivo.count += 1
+        desglose.efectivo.total += v.total || 0
+      } else if (m === 'tarjeta') {
+        desglose.tarjeta.count += 1
+        desglose.tarjeta.total += v.total || 0
+      } else if (m === 'transferencia') {
+        desglose.transferencia.count += 1
+        desglose.transferencia.total += v.total || 0
+      }
+    }
+
+    return desglose
   }
 }
