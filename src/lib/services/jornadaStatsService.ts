@@ -149,20 +149,49 @@ export const jornadaStatsService = {
 
       const ventasList = ventas || []
 
-      const { data: pedidos } = await supabase
+      // Query principal de pedidos SIN los aliases conflictivos
+      // Solo mesero y bartender (los mas usados). Ayudante y cancelador
+      // se resuelven aparte para evitar multiples aliases de usuarios.
+      const { data: pedidos, error: pedidosError } = await supabase
         .from('pedidos')
         .select(`
           id, estado, total, mesero_id, bartender_id, mesa, items,
           created_at, motivo_cancelacion, cancelado_por, cancelado_en,
           ayudado_por_id,
           mesero:usuarios!mesero_id(nombre, apellido, color_mapa),
-          bartender:bartenders!bartender_id(nombre_completo, usuario_id),
-          ayudante:usuarios!ayudado_por_id(nombre, apellido),
-          cancelador:usuarios!cancelado_por(nombre, apellido)
+          bartender:bartenders!bartender_id(nombre_completo, usuario_id)
         `)
         .eq('jornada_id', jornadaId)
 
+      if (pedidosError) {
+        console.error('Error al cargar pedidos:', pedidosError)
+      }
+
       const pedidosList = pedidos || []
+
+      // Resolver usuarios involucrados como ayudantes o canceladores
+      // en una sola query (evita multiples aliases de usuarios).
+      const idsAyudantes = new Set<string>()
+      const idsCanceladores = new Set<string>()
+      pedidosList.forEach((p: any) => {
+        if (p.ayudado_por_id) idsAyudantes.add(p.ayudado_por_id)
+        if (p.cancelado_por) idsCanceladores.add(p.cancelado_por)
+      })
+      const idsUnicos = Array.from(new Set([...idsAyudantes, ...idsCanceladores]))
+
+      let usuariosExtraMap = new Map<string, { nombre: string; apellido: string }>()
+      if (idsUnicos.length > 0) {
+        const { data: usuariosExtra } = await supabase
+          .from('usuarios')
+          .select('id, nombre, apellido')
+          .in('id', idsUnicos)
+        ;(usuariosExtra || []).forEach((u: any) => {
+          usuariosExtraMap.set(u.id, {
+            nombre: u.nombre || '',
+            apellido: u.apellido || ''
+          })
+        })
+      }
 
       const { data: mesas } = await supabase
         .from('mesas')
@@ -238,9 +267,10 @@ export const jornadaStatsService = {
         if (!p.ayudado_por_id) return
         if (p.ayudado_por_id === p.mesero_id) return
         if (!meserosMap.has(p.ayudado_por_id)) {
+          const extra = usuariosExtraMap.get(p.ayudado_por_id)
           meserosMap.set(p.ayudado_por_id, {
             usuario_id: p.ayudado_por_id,
-            nombre: p.ayudante ? `${p.ayudante.nombre || ''} ${p.ayudante.apellido || ''}`.trim() : 'N/A',
+            nombre: extra ? `${extra.nombre} ${extra.apellido}`.trim() : 'N/A',
             color_mapa: null,
             mesas_asignadas: 0,
             pedidos: 0,
@@ -350,28 +380,36 @@ export const jornadaStatsService = {
         .sort((a, b) => b.cantidad - a.cantidad)
         .slice(0, 15)
 
-      const cancelacionesList = pedidosCancelados.map((p: any) => ({
-        pedido_id: p.id.slice(0, 8),
-        mesa: p.mesa || 'N/A',
-        mesero: p.mesero ? `${p.mesero.nombre || ''} ${p.mesero.apellido || ''}`.trim() : 'N/A',
-        motivo: p.motivo_cancelacion || 'Sin motivo',
-        monto: Number(p.total) || 0,
-        cancelado_por: p.cancelador ? `${p.cancelador.nombre || ''} ${p.cancelador.apellido || ''}`.trim() : 'N/A',
-        hora: p.cancelado_en
-          ? new Date(p.cancelado_en).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-          : 'N/A'
-      }))
+      const cancelacionesList = pedidosCancelados.map((p: any) => {
+        const cancelador = p.cancelado_por ? usuariosExtraMap.get(p.cancelado_por) : null
+        return {
+          pedido_id: p.id.slice(0, 8),
+          mesa: p.mesa || 'N/A',
+          mesero: p.mesero ? `${p.mesero.nombre || ''} ${p.mesero.apellido || ''}`.trim() : 'N/A',
+          motivo: p.motivo_cancelacion || 'Sin motivo',
+          monto: Number(p.total) || 0,
+          cancelado_por: cancelador
+            ? `${cancelador.nombre} ${cancelador.apellido}`.trim()
+            : 'N/A',
+          hora: p.cancelado_en
+            ? new Date(p.cancelado_en).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+            : 'N/A'
+        }
+      })
 
       const ayudasList = pedidosList
         .filter((p: any) => p.ayudado_por_id && p.ayudado_por_id !== p.mesero_id)
-        .map((p: any) => ({
-          mesa: p.mesa || 'N/A',
-          titular: p.mesero ? `${p.mesero.nombre || ''} ${p.mesero.apellido || ''}`.trim() : 'N/A',
-          ayudante: p.ayudante ? `${p.ayudante.nombre || ''} ${p.ayudante.apellido || ''}`.trim() : 'N/A',
-          items: Array.isArray(p.items) ? p.items.length : 0,
-          total: Number(p.total) || 0,
-          hora: new Date(p.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-        }))
+        .map((p: any) => {
+          const ayudante = usuariosExtraMap.get(p.ayudado_por_id)
+          return {
+            mesa: p.mesa || 'N/A',
+            titular: p.mesero ? `${p.mesero.nombre || ''} ${p.mesero.apellido || ''}`.trim() : 'N/A',
+            ayudante: ayudante ? `${ayudante.nombre} ${ayudante.apellido}`.trim() : 'N/A',
+            items: Array.isArray(p.items) ? p.items.length : 0,
+            total: Number(p.total) || 0,
+            hora: new Date(p.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+          }
+        })
 
       const mermasDetalle = mermasList.map((m: any) => ({
         producto: m.productos?.nombre || 'N/A',
@@ -382,15 +420,13 @@ export const jornadaStatsService = {
         fecha: new Date(m.fecha).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
       }))
 
-      // NUEVA SECCION: pedidos servidos detallados con mesa y ayudantes
       const pedidosServidos = pedidosList
         .filter((p: any) => ['listo', 'servido'].includes(p.estado))
         .map((p: any) => {
           const items = Array.isArray(p.items) ? p.items : []
           const itemsCount = items.reduce((s: number, it: any) => s + (Number(it.cantidad) || 0), 0)
-          const ayudanteNombre = p.ayudante
-            ? `${p.ayudante.nombre || ''} ${p.ayudante.apellido || ''}`.trim()
-            : ''
+          const ayudante = p.ayudado_por_id ? usuariosExtraMap.get(p.ayudado_por_id) : null
+          const ayudanteNombre = ayudante ? `${ayudante.nombre} ${ayudante.apellido}`.trim() : ''
           return {
             id: p.id.slice(0, 8),
             hora: new Date(p.created_at).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
