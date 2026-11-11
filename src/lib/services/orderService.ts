@@ -264,18 +264,29 @@ export const orderService = {
       }
     }
 
+    // FIX I.1: si el descuento falla (stock insuficiente), borrar el pedido y lanzar error
     try {
       const { data: invResult, error: invError } = await supabase.rpc(
         'descontar_inventario_por_pedido',
         { p_pedido_id: data.id }
       )
+
       if (invError) {
-        console.error('[createOrder] Error al descontar inventario:', invError)
-      } else {
-        console.log('[createOrder] Inventario descontado:', invResult)
+        await supabase.from('pedidos').delete().eq('id', data.id)
+        throw new Error(invError.message || 'Stock insuficiente para completar el pedido')
       }
-    } catch (e) {
-      console.error('[createOrder] Excepcion al descontar inventario:', e)
+
+      console.log('[createOrder] Inventario descontado:', invResult)
+    } catch (e: any) {
+      if (e.message?.includes('Stock insuficiente')) {
+        throw e
+      }
+      try {
+        await supabase.from('pedidos').delete().eq('id', data.id)
+      } catch (delErr) {
+        console.error('[createOrder] No se pudo borrar el pedido huerfano:', delErr)
+      }
+      throw new Error('No se pudo descontar el inventario: ' + (e.message || 'error desconocido'))
     }
 
     return data as Order
