@@ -24,6 +24,8 @@ import {
   PieChart, Pie, Cell, BarChart, Bar
 } from 'recharts'
 import { dashboardService, DashboardKPIs } from '@/lib/services/dashboardService'
+import { generarReporteJornadaPDF } from '@/components/admin/jornada/ReporteJornadaPDF'
+import { jornadaStatsService } from '@/lib/services/jornadaStatsService'
 import { jornadaService, Jornada } from '@/lib/services/jornadaService'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -142,154 +144,19 @@ export default function AdminDashboardPage() {
     : []
 
   const descargarDetallePDF = async () => {
-    if (!kpis || sinJornada) {
-      alert('No hay datos para descargar')
+    if (!kpis || !kpis.jornada_id) {
+      alert('No hay jornada seleccionada para descargar')
       return
     }
     setDescargando(true)
     try {
-      const doc = new jsPDF('p', 'mm', 'a4')
-      const pageWidth = doc.internal.pageSize.getWidth()
-      const pageHeight = doc.internal.pageSize.getHeight()
-      const jornadaNombre = kpis.jornada_nombre || 'Jornada'
-      const fechaGen = new Date().toLocaleString('es-MX')
-
-      doc.setFillColor(16, 185, 129)
-      doc.rect(0, 0, pageWidth, 35, 'F')
-      doc.setTextColor(255, 255, 255)
-      doc.setFontSize(20)
-      doc.setFont('helvetica', 'bold')
-      doc.text('BARRANCO SYSTEM', pageWidth / 2, 18, { align: 'center' })
-      doc.setFontSize(11)
-      doc.text(`Detalle de ${jornadaNombre}`, pageWidth / 2, 28, { align: 'center' })
-
-      doc.setTextColor(60, 60, 60)
-      doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
-      doc.text(`Generado: ${fechaGen}`, 15, 48)
-
-      doc.setFontSize(13)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(16, 185, 129)
-      doc.text('Resumen de la jornada', 15, 60)
-      doc.setDrawColor(16, 185, 129)
-      doc.line(15, 62, pageWidth - 15, 62)
-
-      autoTable(doc, {
-        startY: 66,
-        body: [
-          ['Ventas totales', `$${(kpis.resumen.ventas_totales || 0).toFixed(2)}`],
-          ['Propinas totales', `$${(kpis.resumen.propinas_totales || 0).toFixed(2)}`],
-          ['Transacciones', String(kpis.resumen.transacciones || 0)],
-          ['Ticket promedio', `$${(kpis.resumen.ticket_promedio || 0).toFixed(2)}`],
-          ['Cuentas abiertas', `${kpis.cuentas_pendientes.cantidad} ($${kpis.cuentas_pendientes.total.toFixed(2)})`],
-          ['Cancelaciones', `${kpis.cancelaciones.cantidad} ($${kpis.cancelaciones.total.toFixed(2)})`]
-        ],
-        theme: 'plain',
-        styles: { fontSize: 10 },
-        margin: { left: 15, right: 15 }
-      })
-
-      let y = (doc as any).lastAutoTable.finalY + 12
-
-      doc.setFontSize(13)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(16, 185, 129)
-      doc.text('Ventas por trabajador', 15, y); y += 4
-
-      if (kpis.ventas_por_trabajador.length > 0) {
-        autoTable(doc, {
-          startY: y,
-          head: [['Trabajador', 'Rol', 'Cobros', 'Total', 'Propinas']],
-          body: kpis.ventas_por_trabajador.map(t => [
-            t.nombre, t.rol, String(t.cobros),
-            `$${t.total.toFixed(2)}`, `$${t.propinas.toFixed(2)}`
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 9 },
-          bodyStyles: { fontSize: 9 },
-          margin: { left: 15, right: 15 }
-        })
-        y = (doc as any).lastAutoTable.finalY + 12
-      } else {
-        doc.text('Sin ventas registradas', 15, y + 6)
-        y += 16
+      const stats = await jornadaStatsService.getStatsCompletas(kpis.jornada_id)
+      if (!stats) {
+        alert('No se pudieron cargar las estadisticas')
+        return
       }
-
-      if (y > pageHeight - 60) { doc.addPage(); y = 20 }
-
-      doc.setFontSize(13)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(220, 38, 38)
-      doc.text(`Cancelaciones (${kpis.cancelaciones_detalladas.length})`, 15, y); y += 4
-
-      if (kpis.cancelaciones_detalladas.length > 0) {
-        autoTable(doc, {
-          startY: y,
-          head: [['Fecha', 'Mesa', 'Total', 'Mesero', 'Cancelo', 'Motivo']],
-          body: kpis.cancelaciones_detalladas.map(c => [
-            c.cancelado_en ? new Date(c.cancelado_en).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-',
-            c.mesa || '-',
-            `$${c.total.toFixed(2)}`,
-            c.mesero_nombre,
-            `${c.cancelado_por_nombre} (${c.cancelado_por_rol})`,
-            c.motivo_cancelacion || '-'
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [220, 38, 38], textColor: 255, fontSize: 8 },
-          bodyStyles: { fontSize: 8 },
-          margin: { left: 15, right: 15 }
-        })
-        y = (doc as any).lastAutoTable.finalY + 12
-      } else {
-        doc.setFontSize(10)
-        doc.setFont('helvetica', 'normal')
-        doc.setTextColor(60, 60, 60)
-        doc.text('Sin cancelaciones', 15, y + 6)
-        y += 16
-      }
-
-      if (y > pageHeight - 60) { doc.addPage(); y = 20 }
-
-      doc.setFontSize(13)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(234, 88, 12)
-      doc.text(`Mermas (${kpis.mermas_detalladas.length})`, 15, y); y += 4
-
-      if (kpis.mermas_detalladas.length > 0) {
-        autoTable(doc, {
-          startY: y,
-          head: [['Fecha', 'Producto', 'Cant.', 'Valor', 'Bartender', 'Motivo']],
-          body: kpis.mermas_detalladas.map(m => [
-            m.fecha ? new Date(m.fecha).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-',
-            `${m.producto_nombre} ${m.producto_marca}`.trim(),
-            String(m.cantidad),
-            `$${m.valor_perdido.toFixed(2)}`,
-            m.bartender_nombre,
-            m.motivo || '-'
-          ]),
-          theme: 'striped',
-          headStyles: { fillColor: [234, 88, 12], textColor: 255, fontSize: 8 },
-          bodyStyles: { fontSize: 8 },
-          margin: { left: 15, right: 15 }
-        })
-      } else {
-        doc.setFontSize(10)
-        doc.setFont('helvetica', 'normal')
-        doc.setTextColor(60, 60, 60)
-        doc.text('Sin mermas registradas', 15, y + 6)
-      }
-
-      const totalPages = (doc as any).internal.getNumberOfPages()
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i)
-        doc.setFontSize(8)
-        doc.setTextColor(150, 150, 150)
-        doc.text(`Pagina ${i} de ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' })
-        doc.text('Barranco System', 15, pageHeight - 8)
-      }
-
-      doc.save(`detalle_jornada_${new Date().toISOString().split('T')[0]}.pdf`)
+      const nombreAdmin = `${user?.nombre || ''} ${user?.apellido || ''}`.trim() || 'Administrador'
+      generarReporteJornadaPDF(stats, nombreAdmin)
     } catch (error) {
       console.error('Error al generar PDF:', error)
       alert('No se pudo generar el PDF')

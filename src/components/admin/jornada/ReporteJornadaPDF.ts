@@ -2,22 +2,37 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { JornadaStats } from '@/lib/services/jornadaStatsService'
 
-const COLORS = {
-  primary: [16, 185, 129] as [number, number, number],
-  secondary: [59, 130, 246] as [number, number, number],
-  warning: [245, 158, 11] as [number, number, number],
-  danger: [239, 68, 68] as [number, number, number],
-  dark: [31, 41, 55] as [number, number, number],
-  gray: [107, 114, 128] as [number, number, number],
-  lightGray: [243, 244, 246] as [number, number, number],
-  white: [255, 255, 255] as [number, number, number]
+// ============================================================
+// PALETA FORMAL - Estilo Apple/Microsoft/Google
+// ============================================================
+const C = {
+  ink: [31, 41, 55] as [number, number, number],            // #1F2937 gris oscuro
+  inkSoft: [75, 85, 99] as [number, number, number],        // #4B5563 gris medio
+  muted: [107, 114, 128] as [number, number, number],       // #6B7280 gris claro
+  hairline: [229, 231, 235] as [number, number, number],    // #E5E7EB linea sutil
+  surface: [249, 250, 251] as [number, number, number],     // #F9FAFB fondo suave
+  white: [255, 255, 255] as [number, number, number],
+  accent: [30, 64, 175] as [number, number, number],        // #1E40AF azul profundo
+  accentSoft: [219, 234, 254] as [number, number, number],  // #DBEAFE azul muy claro
+  success: [4, 120, 87] as [number, number, number],        // #047857 verde formal
+  successSoft: [209, 250, 229] as [number, number, number], // #D1FAE5 verde suave
+  danger: [185, 28, 28] as [number, number, number],        // #B91C1C rojo formal
+  dangerSoft: [254, 226, 226] as [number, number, number],  // #FEE2E2 rojo suave
+  warning: [161, 98, 7] as [number, number, number],        // #A16207 ambar
+  warningSoft: [254, 243, 199] as [number, number, number]  // #FEF3C7 ambar suave
 }
 
-function formatearMoneda(n: number): string {
-  return `$${(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+// ============================================================
+// HELPERS
+// ============================================================
+function money(n: number): string {
+  return `$${(n || 0).toLocaleString('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`
 }
 
-function formatearFecha(iso: string): string {
+function fecha(iso: string): string {
   return new Date(iso).toLocaleString('es-MX', {
     day: '2-digit',
     month: 'long',
@@ -27,458 +42,635 @@ function formatearFecha(iso: string): string {
   })
 }
 
-function dibujarBarraHorizontal(
+function dibujarLogoB(doc: jsPDF, cx: number, cy: number, radius: number) {
+  // Circulo negro
+  doc.setFillColor(C.ink[0], C.ink[1], C.ink[2])
+  doc.circle(cx, cy, radius, 'F')
+  // Letra B blanca centrada
+  doc.setTextColor(C.white[0], C.white[1], C.white[2])
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(radius * 1.6)
+  // Ajuste fino de posicion vertical para centrar visualmente
+  doc.text('B', cx, cy + radius * 0.55, { align: 'center' })
+}
+
+function dibujarSeccionHeader(
+  doc: jsPDF,
+  y: number,
+  margin: number,
+  titulo: string,
+  subtitulo?: string
+): number {
+  // Barra vertical de acento a la izquierda
+  doc.setFillColor(C.accent[0], C.accent[1], C.accent[2])
+  doc.rect(margin, y - 4, 1.2, 7, 'F')
+
+  doc.setTextColor(C.ink[0], C.ink[1], C.ink[2])
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.text(titulo, margin + 4, y + 1)
+
+  if (subtitulo) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+    doc.text(subtitulo, margin + 4, y + 6)
+    return y + 12
+  }
+  return y + 8
+}
+
+function dibujarKPI(
   doc: jsPDF,
   x: number,
   y: number,
   width: number,
   height: number,
-  valor: number,
-  maximo: number,
+  label: string,
+  value: string,
   color: [number, number, number]
 ) {
-  doc.setFillColor(COLORS.lightGray[0], COLORS.lightGray[1], COLORS.lightGray[2])
-  doc.roundedRect(x, y, width, height, 1, 1, 'F')
+  // Fondo suave
+  doc.setFillColor(C.surface[0], C.surface[1], C.surface[2])
+  doc.roundedRect(x, y, width, height, 1.5, 1.5, 'F')
 
-  if (maximo > 0) {
-    const anchoBarra = Math.max(0, Math.min(width, (valor / maximo) * width))
-    doc.setFillColor(color[0], color[1], color[2])
-    doc.roundedRect(x, y, anchoBarra, height, 1, 1, 'F')
-  }
+  // Barra de color superior
+  doc.setFillColor(color[0], color[1], color[2])
+  doc.rect(x, y, width, 1, 'F')
+
+  // Label
+  doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.text(label.toUpperCase(), x + 4, y + 8)
+
+  // Valor
+  doc.setTextColor(C.ink[0], C.ink[1], C.ink[2])
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.text(value, x + 4, y + 19)
 }
 
-function dibujarDona(
-  doc: jsPDF,
-  cx: number,
-  cy: number,
-  radioExterior: number,
-  radioInterior: number,
-  datos: Array<{ valor: number; color: [number, number, number] }>
-) {
-  const total = datos.reduce((s, d) => s + d.valor, 0)
-  if (total === 0) return
-
-  let anguloInicio = -Math.PI / 2
-
-  datos.forEach(({ valor, color }) => {
-    const anguloFin = anguloInicio + (valor / total) * 2 * Math.PI
-    const pasos = Math.max(20, Math.floor((anguloFin - anguloInicio) * 20))
-    for (let i = 0; i <= pasos; i++) {
-      const angulo = anguloInicio + (anguloFin - anguloInicio) * (i / pasos)
-      const x1 = cx + Math.cos(angulo) * radioExterior
-      const y1 = cy + Math.sin(angulo) * radioExterior
-      const x2 = cx + Math.cos(angulo) * radioInterior
-      const y2 = cy + Math.sin(angulo) * radioInterior
-      doc.setFillColor(color[0], color[1], color[2])
-      doc.triangle(cx, cy, x1, y1, x2, y2, 'F')
-    }
-    anguloInicio = anguloFin
-  })
-
-  doc.setFillColor(255, 255, 255)
-  doc.circle(cx, cy, radioInterior - 2, 'F')
-}
-
+// ============================================================
+// FUNCION PRINCIPAL
+// ============================================================
 export function generarReporteJornadaPDF(stats: JornadaStats, nombreAdmin: string) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
-  const margin = 15
+  const margin = 20
   const contentWidth = pageWidth - margin * 2
 
-  let y = margin
+  // ============================================================
+  // PORTADA
+  // ============================================================
+  // Fondo superior blanco puro (sin color)
+  doc.setFillColor(C.white[0], C.white[1], C.white[2])
+  doc.rect(0, 0, pageWidth, pageHeight, 'F')
 
-  // HEADER con logo CSS
-  doc.setFillColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-  doc.rect(0, 0, pageWidth, 30, 'F')
+  // Logo grande centrado
+  const logoY = pageHeight * 0.32
+  dibujarLogoB(doc, pageWidth / 2, logoY, 18)
 
-  // Logo simulado: circulo blanco con B negra
-  doc.setFillColor(255, 255, 255)
-  doc.circle(20, 15, 8, 'F')
-  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-  doc.setFontSize(14)
+  // BARRANCO
+  doc.setTextColor(C.ink[0], C.ink[1], C.ink[2])
   doc.setFont('helvetica', 'bold')
-  doc.text('B', 20, 18, { align: 'center' })
+  doc.setFontSize(32)
+  doc.text('BARRANCO', pageWidth / 2, logoY + 32, { align: 'center' })
 
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(16)
-  doc.setFont('helvetica', 'bold')
-  doc.text('BARRANCO', 33, 12)
-  doc.setFontSize(8)
+  // Linea sutil
+  doc.setDrawColor(C.hairline[0], C.hairline[1], C.hairline[2])
+  doc.setLineWidth(0.2)
+  doc.line(pageWidth / 2 - 15, logoY + 38, pageWidth / 2 + 15, logoY + 38)
+
+  // Subtitulo
   doc.setFont('helvetica', 'normal')
-  doc.text('Reporte de Cierre de Jornada', 33, 19)
+  doc.setFontSize(12)
+  doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+  doc.text('Reporte de Jornada', pageWidth / 2, logoY + 46, { align: 'center' })
 
-  doc.setFontSize(9)
-  doc.text(
-    `Generado: ${new Date().toLocaleString('es-MX')}`,
-    pageWidth - margin,
-    13,
-    { align: 'right' }
-  )
-  doc.text(
-    `Por: ${nombreAdmin}`,
-    pageWidth - margin,
-    19,
-    { align: 'right' }
-  )
-
-  y = 40
-
-  // INFO JORNADA
-  doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2])
-  doc.roundedRect(margin, y, contentWidth, 20, 2, 2, 'F')
-
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(14)
+  // Nombre de la jornada
   doc.setFont('helvetica', 'bold')
-  doc.text(stats.jornada.nombre, margin + 5, y + 8)
+  doc.setFontSize(18)
+  doc.setTextColor(C.ink[0], C.ink[1], C.ink[2])
+  doc.text(stats.jornada.nombre, pageWidth / 2, logoY + 62, { align: 'center' })
 
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  const fecha = new Date(stats.jornada.fecha + 'T12:00:00').toLocaleDateString('es-MX', {
+  // Fecha
+  const fechaJornada = new Date(stats.jornada.fecha + 'T12:00:00').toLocaleDateString('es-MX', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric'
   })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
   doc.text(
-    `Fecha: ${fecha.charAt(0).toUpperCase() + fecha.slice(1)}`,
-    margin + 5,
-    y + 15
-  )
-  doc.text(
-    `Apertura: ${formatearFecha(stats.jornada.hora_inicio)}`,
-    pageWidth - margin - 5,
-    y + 8,
-    { align: 'right' }
-  )
-  doc.text(
-    `Cierre: ${stats.jornada.hora_cierre ? formatearFecha(stats.jornada.hora_cierre) : 'En curso'}`,
-    pageWidth - margin - 5,
-    y + 15,
-    { align: 'right' }
+    fechaJornada.charAt(0).toUpperCase() + fechaJornada.slice(1),
+    pageWidth / 2,
+    logoY + 70,
+    { align: 'center' }
   )
 
-  y += 28
+  // Footer de portada
+  const footerY = pageHeight - 30
+  doc.setDrawColor(C.hairline[0], C.hairline[1], C.hairline[2])
+  doc.line(margin, footerY, pageWidth - margin, footerY)
 
-  // METRICAS PRINCIPALES
-  const cardWidth = (contentWidth - 6) / 4
-  const cardHeight = 22
-  const metricas = [
-    { label: 'VENTAS TOTALES', valor: formatearMoneda(stats.resumen.total_ventas), color: COLORS.primary },
-    { label: 'PROPINAS', valor: formatearMoneda(stats.resumen.total_propinas), color: COLORS.secondary },
-    { label: 'PEDIDOS', valor: stats.resumen.total_pedidos.toString(), color: COLORS.warning },
-    { label: 'TICKET PROMEDIO', valor: formatearMoneda(stats.resumen.ticket_promedio), color: COLORS.dark }
-  ]
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+  doc.text('Generado por', margin, footerY + 5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(C.ink[0], C.ink[1], C.ink[2])
+  doc.text(nombreAdmin, margin, footerY + 10)
 
-  metricas.forEach((m, i) => {
-    const x = margin + i * (cardWidth + 2)
-    doc.setFillColor(m.color[0], m.color[1], m.color[2])
-    doc.roundedRect(x, y, cardWidth, cardHeight, 2, 2, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(7)
-    doc.setFont('helvetica', 'normal')
-    doc.text(m.label, x + cardWidth / 2, y + 7, { align: 'center' })
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text(m.valor, x + cardWidth / 2, y + 16, { align: 'center' })
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+  doc.text(new Date().toLocaleString('es-MX'), pageWidth - margin, footerY + 10, {
+    align: 'right'
   })
 
-  y += cardHeight + 8
+  // ============================================================
+  // PAGINA 2: RESUMEN EJECUTIVO
+  // ============================================================
+  doc.addPage()
 
-  // VENTAS POR MESERO
+  // Header minimalista
+  doc.setFillColor(C.white[0], C.white[1], C.white[2])
+  doc.rect(0, 0, pageWidth, 25, 'F')
+
+  // Logo pequeño en el header
+  dibujarLogoB(doc, margin + 5, 12, 5)
+
+  doc.setTextColor(C.ink[0], C.ink[1], C.ink[2])
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.text('BARRANCO', margin + 13, 12)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+  doc.text('Reporte de Jornada', margin + 13, 16.5)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8)
+  doc.setTextColor(C.ink[0], C.ink[1], C.ink[2])
+  doc.text(stats.jornada.nombre, pageWidth - margin, 12, { align: 'right' })
+
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+  doc.text(
+    `${new Date(stats.jornada.hora_inicio).toLocaleDateString('es-MX')}`,
+    pageWidth - margin,
+    16.5,
+    { align: 'right' }
+  )
+
+  // Linea inferior del header
+  doc.setDrawColor(C.hairline[0], C.hairline[1], C.hairline[2])
+  doc.line(margin, 22, pageWidth - margin, 22)
+
+  let y = 32
+
+  // Titulo Resumen
+  y = dibujarSeccionHeader(doc, y, margin, 'Resumen Ejecutivo')
+
+  // KPIs en grid 2x2
+  const kpiWidth = (contentWidth - 4) / 2
+  const kpiHeight = 24
+
+  dibujarKPI(doc, margin, y, kpiWidth, kpiHeight, 'Ventas Totales', money(stats.resumen.total_ventas), C.success)
+  dibujarKPI(doc, margin + kpiWidth + 4, y, kpiWidth, kpiHeight, 'Propinas', money(stats.resumen.total_propinas), C.accent)
+
+  y += kpiHeight + 4
+
+  dibujarKPI(doc, margin, y, kpiWidth, kpiHeight, 'Pedidos', stats.resumen.total_pedidos.toString(), C.ink)
+  dibujarKPI(doc, margin + kpiWidth + 4, y, kpiWidth, kpiHeight, 'Ticket Promedio', money(stats.resumen.ticket_promedio), C.ink)
+
+  y += kpiHeight + 10
+
+  // Seccion Metodos de Pago
+  y = dibujarSeccionHeader(doc, y, margin, 'Metodos de Pago', 'Distribucion de ingresos')
+
+  const metodosData = [
+    ['Efectivo', money(stats.metodos_pago.efectivo), `${stats.metodos_pago.efectivo_pct.toFixed(1)}%`],
+    ['Tarjeta', money(stats.metodos_pago.tarjeta), `${stats.metodos_pago.tarjeta_pct.toFixed(1)}%`],
+    ['Transferencia', money(stats.metodos_pago.transferencia), `${stats.metodos_pago.transferencia_pct.toFixed(1)}%`]
+  ]
+  if (stats.metodos_pago.otro > 0) {
+    metodosData.push(['Otro', money(stats.metodos_pago.otro), '-'])
+  }
+  metodosData.push(['Total', money(stats.metodos_pago.total), '100%'])
+
+  autoTable(doc, {
+    startY: y,
+    head: [['Metodo', 'Monto', 'Porcentaje']],
+    body: metodosData,
+    theme: 'plain',
+    headStyles: {
+      fillColor: C.surface,
+      textColor: C.ink,
+      fontSize: 9,
+      fontStyle: 'bold',
+      lineWidth: { top: 0, right: 0, bottom: 0.3, left: 0 },
+      lineColor: C.hairline
+    },
+    bodyStyles: {
+      fontSize: 9.5,
+      textColor: C.ink,
+      lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+      lineColor: C.hairline
+    },
+    columnStyles: {
+      0: { cellWidth: contentWidth * 0.45 },
+      1: { cellWidth: contentWidth * 0.30, halign: 'right', fontStyle: 'bold' },
+      2: { cellWidth: contentWidth * 0.25, halign: 'right' }
+    },
+    margin: { left: margin, right: margin }
+  })
+
+  y = (doc as any).lastAutoTable.finalY + 10
+
+  // Seccion Cancelaciones y Mermas (si hay)
+  if (stats.resumen.pedidos_cancelados > 0 || stats.resumen.total_mermas > 0) {
+    y = dibujarSeccionHeader(doc, y, margin, 'Alertas de la Jornada')
+    const alertas = [
+      ['Pedidos cancelados', stats.resumen.pedidos_cancelados.toString(), money(stats.resumen.valor_cancelados)],
+      ['Mermas registradas', stats.resumen.total_mermas.toString(), money(stats.resumen.valor_mermas)]
+    ]
+    autoTable(doc, {
+      startY: y,
+      head: [['Concepto', 'Cantidad', 'Monto']],
+      body: alertas,
+      theme: 'plain',
+      headStyles: {
+        fillColor: C.dangerSoft,
+        textColor: C.danger,
+        fontSize: 9,
+        fontStyle: 'bold',
+        lineWidth: 0
+      },
+      bodyStyles: {
+        fontSize: 9.5,
+        textColor: C.ink,
+        lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+        lineColor: C.hairline
+      },
+      columnStyles: {
+        0: { cellWidth: contentWidth * 0.5 },
+        1: { cellWidth: contentWidth * 0.2, halign: 'center' },
+        2: { cellWidth: contentWidth * 0.3, halign: 'right', fontStyle: 'bold' }
+      },
+      margin: { left: margin, right: margin }
+    })
+    y = (doc as any).lastAutoTable.finalY + 10
+  }
+
+  // ============================================================
+  // PAGINA 3+: EQUIPO
+  // ============================================================
+  doc.addPage()
+  y = 32
+
+  y = dibujarSeccionHeader(doc, y, margin, 'Rendimiento del Equipo', 'Ventas, propinas y ayudas por trabajador')
+
   if (stats.ventas_por_mesero.length > 0) {
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(12)
+    doc.setTextColor(C.inkSoft[0], C.inkSoft[1], C.inkSoft[2])
     doc.setFont('helvetica', 'bold')
-    doc.text('Ventas por Mesero', margin, y)
-    y += 6
-
-    const maxVentas = Math.max(...stats.ventas_por_mesero.map(m => m.ventas))
-
-    stats.ventas_por_mesero.forEach((m) => {
-      if (y > pageHeight - 40) { doc.addPage(); y = margin }
-      doc.setFontSize(9)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-      doc.text(m.nombre, margin, y + 4)
-      dibujarBarraHorizontal(doc, margin + 50, y, contentWidth - 80, 5, m.ventas, maxVentas, COLORS.primary)
-      doc.setFontSize(9)
-      doc.setFont('helvetica', 'bold')
-      doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2])
-      doc.text(formatearMoneda(m.ventas), pageWidth - margin, y + 4, { align: 'right' })
-      y += 8
-    })
-    y += 4
-  }
-
-  // METODOS DE PAGO
-  const metodosConValor = [
-    { label: 'Efectivo', valor: stats.metodos_pago.efectivo, color: COLORS.primary },
-    { label: 'Tarjeta', valor: stats.metodos_pago.tarjeta, color: COLORS.secondary },
-    { label: 'Transferencia', valor: stats.metodos_pago.transferencia, color: COLORS.warning },
-    { label: 'Otro', valor: stats.metodos_pago.otro, color: COLORS.gray }
-  ].filter(m => m.valor > 0)
-
-  if (metodosConValor.length > 0 && y < pageHeight - 80) {
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Metodos de Pago', margin, y)
-    y += 8
-
-    const donaCx = margin + 25
-    const donaCy = y + 22
-    dibujarDona(doc, donaCx, donaCy, 22, 12, metodosConValor)
-
-    const totalMetodos = metodosConValor.reduce((s, m) => s + m.valor, 0)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.text('Total', donaCx, donaCy - 1, { align: 'center' })
-    doc.setFontSize(7)
-    doc.text(formatearMoneda(totalMetodos), donaCx, donaCy + 3, { align: 'center' })
-
-    let legendY = y + 8
-    const legendX = margin + 60
-    metodosConValor.forEach(m => {
-      doc.setFillColor(m.color[0], m.color[1], m.color[2])
-      doc.rect(legendX, legendY - 3, 4, 4, 'F')
-      doc.setFontSize(9)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-      doc.text(m.label, legendX + 7, legendY)
-      doc.setFont('helvetica', 'bold')
-      doc.text(formatearMoneda(m.valor), pageWidth - margin, legendY, { align: 'right' })
-      legendY += 8
-    })
-    y = donaCy + 30
-  }
-
-  // TOP PRODUCTOS
-  if (stats.productos_top.length > 0) {
-    if (y > pageHeight - 60) { doc.addPage(); y = margin }
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Top Productos Vendidos', margin, y)
-    y += 4
-
-    const productosData = stats.productos_top.map(p => [
-      p.nombre, p.cantidad.toString(), formatearMoneda(p.total)
-    ])
+    doc.setFontSize(9)
+    doc.text('Meseros', margin, y)
+    y += 3
 
     autoTable(doc, {
       startY: y,
-      head: [['Producto', 'Cantidad', 'Total']],
-      body: productosData,
-      theme: 'striped',
-      headStyles: { fillColor: COLORS.secondary, textColor: 255, fontSize: 9, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 9 },
+      head: [['Mesero', 'Mesas', 'Pedidos', 'Ventas', 'Propinas', 'Ayudas']],
+      body: stats.ventas_por_mesero.map(m => [
+        m.nombre,
+        m.mesas_asignadas.toString(),
+        m.pedidos.toString(),
+        money(m.ventas),
+        money(m.propinas),
+        `${m.ayudas_dadas}/${m.ayudas_recibidas}`
+      ]),
+      theme: 'plain',
+      headStyles: {
+        fillColor: C.surface,
+        textColor: C.ink,
+        fontSize: 8.5,
+        fontStyle: 'bold',
+        lineWidth: { top: 0, right: 0, bottom: 0.3, left: 0 },
+        lineColor: C.hairline
+      },
+      bodyStyles: {
+        fontSize: 8.5,
+        textColor: C.ink,
+        lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+        lineColor: C.hairline
+      },
       columnStyles: {
-        0: { cellWidth: contentWidth * 0.55 },
-        1: { cellWidth: contentWidth * 0.20, halign: 'center' },
-        2: { cellWidth: contentWidth * 0.25, halign: 'right' }
+        0: { cellWidth: contentWidth * 0.32 },
+        1: { cellWidth: contentWidth * 0.10, halign: 'center' },
+        2: { cellWidth: contentWidth * 0.12, halign: 'center' },
+        3: { cellWidth: contentWidth * 0.18, halign: 'right', fontStyle: 'bold' },
+        4: { cellWidth: contentWidth * 0.16, halign: 'right', textColor: C.success },
+        5: { cellWidth: contentWidth * 0.12, halign: 'center' }
       },
       margin: { left: margin, right: margin }
     })
     y = (doc as any).lastAutoTable.finalY + 8
   }
 
-  // PEDIDOS SERVIDOS DETALLADOS (mesa, mesero, ayudantes)
-  if (stats.pedidos_servidos_detallados && stats.pedidos_servidos_detallados.length > 0) {
-    if (y > pageHeight - 60) { doc.addPage(); y = margin }
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(12)
+  if (stats.ventas_por_caja.length > 0) {
+    if (y > pageHeight - 60) { doc.addPage(); y = 32 }
+    doc.setTextColor(C.inkSoft[0], C.inkSoft[1], C.inkSoft[2])
     doc.setFont('helvetica', 'bold')
-    doc.text(`Pedidos Servidos (${stats.pedidos_servidos_detallados.length})`, margin, y)
-    y += 4
+    doc.setFontSize(9)
+    doc.text('Cajeros', margin, y)
+    y += 3
 
-    const pedidosData = stats.pedidos_servidos_detallados.map(p => [
-      p.hora, p.mesa, p.mesero, p.ayudantes,
-      p.items_count.toString(), formatearMoneda(p.total)
-    ])
+    autoTable(doc, {
+      startY: y,
+      head: [['Cajero', 'Cobros', 'Importe', 'Propinas', 'Efectivo', 'Tarjeta']],
+      body: stats.ventas_por_caja.map(c => [
+        c.nombre,
+        c.cobros.toString(),
+        money(c.importe),
+        money(c.propinas),
+        money(c.efectivo),
+        money(c.tarjeta)
+      ]),
+      theme: 'plain',
+      headStyles: {
+        fillColor: C.surface,
+        textColor: C.ink,
+        fontSize: 8.5,
+        fontStyle: 'bold',
+        lineWidth: { top: 0, right: 0, bottom: 0.3, left: 0 },
+        lineColor: C.hairline
+      },
+      bodyStyles: {
+        fontSize: 8.5,
+        textColor: C.ink,
+        lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+        lineColor: C.hairline
+      },
+      margin: { left: margin, right: margin }
+    })
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
+  if (stats.ventas_por_bartender.length > 0) {
+    if (y > pageHeight - 60) { doc.addPage(); y = 32 }
+    doc.setTextColor(C.inkSoft[0], C.inkSoft[1], C.inkSoft[2])
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.text('Bartenders', margin, y)
+    y += 3
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Bartender', 'Pedidos Preparados', 'Bebidas', 'Mermas', 'Valor Mermas']],
+      body: stats.ventas_por_bartender.map(b => [
+        b.nombre,
+        b.pedidos_preparados.toString(),
+        b.bebidas_preparadas.toString(),
+        b.mermas_count.toString(),
+        money(b.valor_mermas)
+      ]),
+      theme: 'plain',
+      headStyles: {
+        fillColor: C.surface,
+        textColor: C.ink,
+        fontSize: 8.5,
+        fontStyle: 'bold',
+        lineWidth: { top: 0, right: 0, bottom: 0.3, left: 0 },
+        lineColor: C.hairline
+      },
+      bodyStyles: {
+        fontSize: 8.5,
+        textColor: C.ink,
+        lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+        lineColor: C.hairline
+      },
+      margin: { left: margin, right: margin }
+    })
+    y = (doc as any).lastAutoTable.finalY + 10
+  }
+
+  // ============================================================
+  // PAGINA: PEDIDOS SERVIDOS (CON MESA Y AYUDANTES)
+  // ============================================================
+  if (stats.pedidos_servidos_detallados && stats.pedidos_servidos_detallados.length > 0) {
+    doc.addPage()
+    y = 32
+
+    y = dibujarSeccionHeader(
+      doc,
+      y,
+      margin,
+      `Pedidos Servidos (${stats.pedidos_servidos_detallados.length})`,
+      'Trazabilidad completa: hora, mesa, mesero y ayudantes'
+    )
 
     autoTable(doc, {
       startY: y,
       head: [['Hora', 'Mesa', 'Mesero', 'Ayudante(s)', 'Items', 'Total']],
-      body: pedidosData,
-      theme: 'striped',
-      headStyles: { fillColor: COLORS.primary, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 7.5 },
+      body: stats.pedidos_servidos_detallados.map(p => [
+        p.hora,
+        p.mesa,
+        p.mesero,
+        p.ayudantes,
+        p.items_count.toString(),
+        money(p.total)
+      ]),
+      theme: 'plain',
+      headStyles: {
+        fillColor: C.surface,
+        textColor: C.ink,
+        fontSize: 8.5,
+        fontStyle: 'bold',
+        lineWidth: { top: 0, right: 0, bottom: 0.3, left: 0 },
+        lineColor: C.hairline
+      },
+      bodyStyles: {
+        fontSize: 8.5,
+        textColor: C.ink,
+        lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+        lineColor: C.hairline
+      },
       columnStyles: {
-        0: { cellWidth: 18 },
-        1: { cellWidth: 22 },
-        2: { cellWidth: 40 },
-        3: { cellWidth: 40 },
-        4: { cellWidth: 15, halign: 'center' },
-        5: { cellWidth: 25, halign: 'right' }
+        0: { cellWidth: 16 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 42 },
+        3: { cellWidth: 42 },
+        4: { cellWidth: 14, halign: 'center' },
+        5: { cellWidth: 24, halign: 'right', fontStyle: 'bold' }
       },
       margin: { left: margin, right: margin }
     })
-    y = (doc as any).lastAutoTable.finalY + 8
+    y = (doc as any).lastAutoTable.finalY + 10
   }
 
-  // RENDIMIENTO POR BARTENDER
-  if (stats.ventas_por_bartender.length > 0) {
-    if (y > pageHeight - 50) { doc.addPage(); y = margin }
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Rendimiento por Bartender', margin, y)
-    y += 4
-    const bartendersData = stats.ventas_por_bartender.map(b => [
-      b.nombre, b.pedidos_preparados.toString()
-    ])
-    autoTable(doc, {
-      startY: y,
-      head: [['Bartender', 'Pedidos Preparados']],
-      body: bartendersData,
-      theme: 'striped',
-      headStyles: { fillColor: COLORS.primary, textColor: 255, fontSize: 9, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 9 },
-      margin: { left: margin, right: margin }
-    })
-    y = (doc as any).lastAutoTable.finalY + 8
-  }
-
-  // RENDIMIENTO POR CAJERO
-  if (stats.ventas_por_caja.length > 0) {
-    if (y > pageHeight - 50) { doc.addPage(); y = margin }
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Rendimiento por Cajero', margin, y)
-    y += 4
-    const cajaData = stats.ventas_por_caja.map(c => [
-      c.nombre, c.cobros.toString(), formatearMoneda(c.importe), formatearMoneda(c.propinas)
-    ])
-    autoTable(doc, {
-      startY: y,
-      head: [['Cajero', 'Cobros', 'Importe', 'Propinas']],
-      body: cajaData,
-      theme: 'striped',
-      headStyles: { fillColor: COLORS.warning, textColor: 255, fontSize: 9, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 9 },
-      columnStyles: {
-        0: { cellWidth: contentWidth * 0.35 },
-        1: { cellWidth: contentWidth * 0.15, halign: 'center' },
-        2: { cellWidth: contentWidth * 0.25, halign: 'right' },
-        3: { cellWidth: contentWidth * 0.25, halign: 'right' }
-      },
-      margin: { left: margin, right: margin }
-    })
-    y = (doc as any).lastAutoTable.finalY + 8
-  }
-
-  // SESIONES DE CAJA
-  if (stats.sesiones_caja.length > 0) {
-    if (y > pageHeight - 60) { doc.addPage(); y = margin }
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Sesiones de Caja', margin, y)
-    y += 4
-    const sesionesData = stats.sesiones_caja.map(s => [
-      s.cajero, s.caja_fisica, formatearMoneda(s.saldo_inicial),
-      formatearMoneda(s.total_cobrado),
-      s.saldo_final !== null ? formatearMoneda(s.saldo_final) : '-',
-      s.diferencia !== null ? (s.diferencia >= 0 ? '+' : '') + formatearMoneda(s.diferencia) : '-',
-      s.estado === 'cerrada' ? 'Cerrada' : 'Abierta'
-    ])
-    autoTable(doc, {
-      startY: y,
-      head: [['Cajero', 'Caja', 'Inicial', 'Cobrado', 'Final', 'Diferencia', 'Estado']],
-      body: sesionesData,
-      theme: 'striped',
-      headStyles: { fillColor: COLORS.dark, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 8 },
-      margin: { left: margin, right: margin }
-    })
-    y = (doc as any).lastAutoTable.finalY + 8
-  }
-
+  // ============================================================
   // CANCELACIONES
+  // ============================================================
   if (stats.cancelaciones.length > 0) {
-    if (y > pageHeight - 50) { doc.addPage(); y = margin }
-    doc.setTextColor(COLORS.danger[0], COLORS.danger[1], COLORS.danger[2])
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Pedidos Cancelados', margin, y)
-    y += 4
-    const cancelData = stats.cancelaciones.map(c => [
-      c.pedido_id, c.mesa, c.mesero, c.motivo,
-      formatearMoneda(c.monto), c.cancelado_por, c.hora
-    ])
+    doc.addPage()
+    y = 32
+
+    y = dibujarSeccionHeader(
+      doc,
+      y,
+      margin,
+      `Cancelaciones (${stats.cancelaciones.length})`,
+      'Motivos, responsables y montos'
+    )
+
     autoTable(doc, {
       startY: y,
-      head: [['Pedido', 'Mesa', 'Mesero', 'Motivo', 'Monto', 'Cancelo', 'Hora']],
-      body: cancelData,
-      theme: 'striped',
-      headStyles: { fillColor: COLORS.danger, textColor: 255, fontSize: 8, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 8 },
+      head: [['Hora', 'Mesa', 'Mesero', 'Motivo', 'Monto', 'Cancelo']],
+      body: stats.cancelaciones.map(c => [
+        c.hora, c.mesa, c.mesero, c.motivo, money(c.monto), c.cancelado_por
+      ]),
+      theme: 'plain',
+      headStyles: {
+        fillColor: C.dangerSoft,
+        textColor: C.danger,
+        fontSize: 8.5,
+        fontStyle: 'bold',
+        lineWidth: 0
+      },
+      bodyStyles: {
+        fontSize: 8.5,
+        textColor: C.ink,
+        lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+        lineColor: C.hairline
+      },
+      columnStyles: {
+        0: { cellWidth: 16 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 36 },
+        3: { cellWidth: 50 },
+        4: { cellWidth: 24, halign: 'right', fontStyle: 'bold', textColor: C.danger },
+        5: { cellWidth: 24 }
+      },
       margin: { left: margin, right: margin }
     })
-    y = (doc as any).lastAutoTable.finalY + 8
+    y = (doc as any).lastAutoTable.finalY + 10
   }
 
-  // NOTAS Y FIRMA
-  if (y > pageHeight - 50) { doc.addPage(); y = margin }
+  // ============================================================
+  // MERMAS
+  // ============================================================
+  if (stats.mermas.length > 0) {
+    if (y > pageHeight - 60) { doc.addPage(); y = 32 }
+    y = dibujarSeccionHeader(
+      doc,
+      y,
+      margin,
+      `Mermas (${stats.mermas.length})`,
+      `Total perdido: ${money(stats.resumen.valor_mermas)}`
+    )
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Hora', 'Producto', 'Bartender', 'Cantidad', 'Motivo', 'Valor']],
+      body: stats.mermas.map(m => [
+        m.fecha, m.producto, m.bartender, m.cantidad.toString(), m.motivo, money(m.valor)
+      ]),
+      theme: 'plain',
+      headStyles: {
+        fillColor: C.warningSoft,
+        textColor: C.warning,
+        fontSize: 8.5,
+        fontStyle: 'bold',
+        lineWidth: 0
+      },
+      bodyStyles: {
+        fontSize: 8.5,
+        textColor: C.ink,
+        lineWidth: { top: 0, right: 0, bottom: 0.1, left: 0 },
+        lineColor: C.hairline
+      },
+      margin: { left: margin, right: margin }
+    })
+    y = (doc as any).lastAutoTable.finalY + 10
+  }
+
+  // ============================================================
+  // FIRMA Y NOTAS
+  // ============================================================
+  if (y > pageHeight - 50) { doc.addPage(); y = 32 }
 
   if (stats.jornada.notas) {
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(11)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Notas del dia:', margin, y)
-    y += 5
+    y = dibujarSeccionHeader(doc, y, margin, 'Notas del Dia')
+    doc.setTextColor(C.inkSoft[0], C.inkSoft[1], C.inkSoft[2])
+    doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
-    doc.setFont('helvetica', 'italic')
     const lineas = doc.splitTextToSize(stats.jornada.notas, contentWidth)
     doc.text(lineas, margin, y)
-    y += lineas.length * 4 + 8
+    y += lineas.length * 4 + 12
   }
 
-  y = pageHeight - 30
-  doc.setDrawColor(COLORS.gray[0], COLORS.gray[1], COLORS.gray[2])
+  // Firma
+  y = pageHeight - 35
+  doc.setDrawColor(C.inkSoft[0], C.inkSoft[1], C.inkSoft[2])
+  doc.setLineWidth(0.3)
   doc.line(margin, y, margin + 70, y)
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(COLORS.gray[0], COLORS.gray[1], COLORS.gray[2])
-  doc.text('Firma del Administrador', margin, y + 5)
-  doc.text(nombreAdmin, margin, y + 10)
-
   doc.line(pageWidth - margin - 70, y, pageWidth - margin, y)
-  doc.text('Fecha y Hora', pageWidth - margin - 70, y + 5)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+  doc.text('Firma del Administrador', margin, y + 5)
+  doc.text('Fecha', pageWidth - margin - 70, y + 5)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(C.ink[0], C.ink[1], C.ink[2])
+  doc.text(nombreAdmin, margin, y + 10)
   doc.text(new Date().toLocaleString('es-MX'), pageWidth - margin - 70, y + 10)
 
-  // FOOTER EN TODAS LAS PAGINAS
+  // ============================================================
+  // FOOTER MINIMALISTA EN TODAS LAS PAGINAS (excepto portada)
+  // ============================================================
   const totalPages = doc.getNumberOfPages()
-  for (let i = 1; i <= totalPages; i++) {
+  for (let i = 2; i <= totalPages; i++) {
     doc.setPage(i)
-    doc.setFillColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.rect(0, pageHeight - 8, pageWidth, 8, 'F')
 
-    // Logo pequeno
-    doc.setFillColor(255, 255, 255)
-    doc.circle(11, pageHeight - 4, 2.5, 'F')
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2])
-    doc.setFontSize(4)
-    doc.setFont('helvetica', 'bold')
-    doc.text('B', 11, pageHeight - 3, { align: 'center' })
+    // Linea fina superior
+    doc.setDrawColor(C.hairline[0], C.hairline[1], C.hairline[2])
+    doc.setLineWidth(0.2)
+    doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12)
 
-    doc.setFontSize(7)
-    doc.setTextColor(255, 255, 255)
+    // Logo pequeño
+    dibujarLogoB(doc, margin + 3, pageHeight - 7, 2.5)
+
     doc.setFont('helvetica', 'normal')
-    doc.text('Barranco - Sistema de Gestion', margin, pageHeight - 3)
+    doc.setFontSize(7)
+    doc.setTextColor(C.muted[0], C.muted[1], C.muted[2])
+    doc.text('Barranco', margin + 8, pageHeight - 6.5)
+
     doc.text(
-      `Pagina ${i} de ${totalPages}`,
+      `Pagina ${i - 1} de ${totalPages - 1}`,
+      pageWidth / 2,
+      pageHeight - 6.5,
+      { align: 'center' }
+    )
+
+    doc.text(
+      new Date().toLocaleDateString('es-MX'),
       pageWidth - margin,
-      pageHeight - 3,
+      pageHeight - 6.5,
       { align: 'right' }
     )
   }
 
+  // Guardar
   const fechaArchivo = new Date().toISOString().split('T')[0]
-  const nombreArchivo = `Reporte_${stats.jornada.nombre.replace(/\s+/g, '_')}_${fechaArchivo}.pdf`
+  const nombreArchivo = `Barranco_${stats.jornada.nombre.replace(/\s+/g, '_')}_${fechaArchivo}.pdf`
   doc.save(nombreArchivo)
 }
+
+export default generarReporteJornadaPDF
