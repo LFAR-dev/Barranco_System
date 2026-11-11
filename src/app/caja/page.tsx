@@ -263,7 +263,7 @@ export default function CajaDashboard() {
         sidebarHeaderSlot={<EstadoSesionCaja onSesionChange={setSesionActiva} />}
         headerRight={
           <>
-            <NotificationBellUniversal rol="caja" usuarioId={user?.id || ''} />
+            <NotificationBellUniversal rol="caja" usuarioId={user?.id || ''} jornadaId={jornadaId} />
             <UserMenu
               rol="caja"
               onLogout={handleLogout}

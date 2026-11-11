@@ -252,7 +252,7 @@ export default function MeseroDashboard() {
               )}
             </Button>
 
-            <NotificationBellUniversal rol="mesero" usuarioId={user?.id || ''} />
+            <NotificationBellUniversal rol="mesero" usuarioId={user?.id || ''} jornadaId={jornadaId} />
             {user?.id && (
               <div className="hidden lg:block">
                 <ToggleDisponibilidad rol="mesero" usuarioId={user.id} />

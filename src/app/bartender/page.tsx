@@ -298,7 +298,7 @@ export default function BartenderDashboard() {
                 <ToggleDisponibilidad rol="bartender" usuarioId={user.id} />
               </div>
             )}
-            <NotificationBellUniversal rol="bartender" usuarioId={user?.id || ''} />
+            <NotificationBellUniversal rol="bartender" usuarioId={user?.id || ''} jornadaId={jornadaId} />
             <Button
               variant="outline"
               size="sm"
