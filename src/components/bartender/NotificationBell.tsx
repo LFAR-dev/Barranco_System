@@ -1,219 +1,65 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
+import { useRouter } from 'next/navigation'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { 
-  Bell, 
-  CheckCircle, 
-  Clock, 
-  Coffee,
-  Loader2,
-  X
+  Bell, Loader2, Package, CheckCircle, XCircle, DollarSign, AlertTriangle
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/hooks/use-toast'
-import { orderService } from '@/lib/services/orderService'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
+import { useNotificacionesRealtime } from '@/hooks/useNotificacionesRealtime'
 
-interface Notification {
-  id: string
-  pedido_id: string
-  mensaje: string
-  tipo: 'nuevo_pedido' | 'pedido_listo' | 'pedido_cancelado'
-  leida: boolean
-  created_at: string
-  pedido?: any
+interface BartenderNotificationBellProps {
+  usuarioId: string
+  jornadaId?: string | null
 }
 
-export function NotificationBell({ bartenderId }: { bartenderId: string }) {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
-  const supabase = createClient()
-  const subscriptionRef = useRef<any>(null)
+export function NotificationBell({ usuarioId, jornadaId }: BartenderNotificationBellProps) {
+  const router = useRouter()
 
-  useEffect(() => {
-    fetchNotifications()
-    
-    // Crear canal con un nombre único
-    const channelName = `pedidos_changes_${bartenderId}`
-    const channel = supabase.channel(channelName)
-    
-    // Configurar los eventos ANTES de suscribirse
-    channel
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'pedidos'
-      }, (payload) => {
-        const newOrder = payload.new
-        if (!newOrder.bartender_id || newOrder.bartender_id === bartenderId) {
-          handleNewOrder(newOrder)
-        }
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'pedidos'
-      }, (payload) => {
-        const updatedOrder = payload.new
-        if (updatedOrder.bartender_id === bartenderId) {
-          handleOrderUpdate(updatedOrder)
-        }
-      })
-      .subscribe((status) => {
-        console.log(`🔔 Notificaciones: ${status}`)
-      })
+  const {
+    notificaciones,
+    unreadCount,
+    loading,
+    marcarLeida,
+    marcarTodasLeidas
+  } = useNotificacionesRealtime({
+    tabla: 'notificaciones_bartender',
+    filtro: { campo: 'bartender_id', valor: usuarioId },
+    sonido: true,
+    limite: 50,
+    jornadaId: jornadaId || null
+  })
 
-    subscriptionRef.current = channel
-
-    return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.unsubscribe()
-      }
-    }
-  }, [bartenderId])
-
-  const fetchNotifications = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('notificaciones_bartender')
-        .select(`
-          *,
-          pedido:pedidos(*)
-        `)
-        .eq('bartender_id', bartenderId)
-        .order('created_at', { ascending: false })
-        .limit(20)
-
-      if (error) throw error
-
-      setNotifications(data || [])
-      setUnreadCount((data || []).filter((n: any) => !n.leida).length)
-    } catch (error) {
-      console.error('Error fetching notifications:', error)
-    } finally {
-      setLoading(false)
+  const getIcon = (tipo: string) => {
+    switch (tipo) {
+      case 'nuevo_pedido': return <Package className="h-4 w-4 text-blue-500" />
+      case 'pedido_listo': return <CheckCircle className="h-4 w-4 text-green-500" />
+      case 'pedido_cancelado': return <XCircle className="h-4 w-4 text-red-500" />
+      case 'pedido_cobrado':
+      case 'venta_realizada': return <DollarSign className="h-4 w-4 text-emerald-500" />
+      case 'stock_bajo': return <AlertTriangle className="h-4 w-4 text-amber-500" />
+      default: return <Bell className="h-4 w-4 text-gray-500" />
     }
   }
 
-  const handleNewOrder = async (order: any) => {
-    // Verificar si la notificación ya existe
-    const existing = notifications.find(n => n.pedido_id === order.id)
-    if (existing) return
-
-    const { data, error } = await supabase
-      .from('notificaciones_bartender')
-      .insert([{
-        bartender_id: bartenderId,
-        pedido_id: order.id,
-        mensaje: `📦 Nuevo pedido de mesa ${order.mesa || 'N/A'}`,
-        tipo: 'nuevo_pedido'
-      }])
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Error creating notification:', error)
-      return
+  const getTipoLabel = (tipo: string) => {
+    const labels: Record<string, string> = {
+      nuevo_pedido: 'Nuevo pedido',
+      pedido_listo: 'Listo',
+      pedido_cancelado: 'Cancelado',
+      pedido_cobrado: 'Cobrado',
+      venta_realizada: 'Venta',
+      stock_bajo: 'Stock bajo'
     }
-
-    const notif = { ...data, pedido: order }
-    setNotifications(prev => [notif, ...prev])
-    setUnreadCount(prev => prev + 1)
-
-    toast({
-      title: '🔔 Nuevo Pedido',
-      description: `Mesa ${order.mesa || 'N/A'} - ${order.items?.length || 0} items`,
-      variant: 'default'
-    })
+    return labels[tipo] || 'Notificacion'
   }
 
-  const handleOrderUpdate = (order: any) => {
-    // Actualizar notificación existente
-    setNotifications(prev => 
-      prev.map(n => 
-        n.pedido_id === order.id 
-          ? { ...n, pedido: order, mensaje: `📦 Pedido actualizado: ${order.estado}` }
-          : n
-      )
-    )
-  }
-
-  const markAsRead = async (notificationId: string) => {
-    try {
-      await supabase
-        .from('notificaciones_bartender')
-        .update({ leida: true })
-        .eq('id', notificationId)
-
-      setNotifications(prev => 
-        prev.map(n => n.id === notificationId ? { ...n, leida: true } : n)
-      )
-      setUnreadCount(prev => Math.max(0, prev - 1))
-    } catch (error) {
-      console.error('Error marking notification as read:', error)
-    }
-  }
-
-  const markAllAsRead = async () => {
-    try {
-      await supabase
-        .from('notificaciones_bartender')
-        .update({ leida: true })
-        .eq('bartender_id', bartenderId)
-        .eq('leida', false)
-
-      setNotifications(prev => 
-        prev.map(n => ({ ...n, leida: true }))
-      )
-      setUnreadCount(0)
-    } catch (error) {
-      console.error('Error marking all as read:', error)
-    }
-  }
-
-  const acceptOrder = async (notification: Notification) => {
-    try {
-      await orderService.assignBartender(notification.pedido_id, bartenderId)
-      
-      toast({
-        title: '✅ Pedido aceptado',
-        description: `Preparando pedido de mesa ${notification.pedido.mesa || 'N/A'}`,
-        variant: 'success'
-      })
-
-      await markAsRead(notification.id)
-      setNotifications(prev => 
-        prev.filter(n => n.id !== notification.id)
-      )
-      setUnreadCount(prev => Math.max(0, prev - 1))
-
-    } catch (error) {
-      console.error('Error accepting order:', error)
-      toast({
-        title: 'Error',
-        description: 'No se pudo aceptar el pedido',
-        variant: 'destructive'
-      })
-    }
-  }
-
-  if (loading) {
-    return (
-      <Button variant="ghost" size="icon" className="relative">
-        <Loader2 className="h-5 w-5 animate-spin" />
-      </Button>
-    )
+  const handleClick = async (notif: any) => {
+    if (!notif.leida) await marcarLeida(notif.id)
+    router.push('/bartender')
   }
 
   return (
@@ -222,7 +68,7 @@ export function NotificationBell({ bartenderId }: { bartenderId: string }) {
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+            <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center animate-pulse font-bold">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
@@ -232,67 +78,59 @@ export function NotificationBell({ bartenderId }: { bartenderId: string }) {
         <DropdownMenuLabel className="flex items-center justify-between">
           <span>Notificaciones</span>
           {unreadCount > 0 && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className="text-xs text-blue-600 h-auto p-1"
-              onClick={markAllAsRead}
+              onClick={(e) => { e.preventDefault(); marcarTodasLeidas() }}
             >
               Marcar todas
             </Button>
           )}
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {notifications.length === 0 ? (
+
+        {loading ? (
+          <div className="p-6 text-center">
+            <Loader2 className="h-5 w-5 animate-spin text-gray-400 mx-auto" />
+          </div>
+        ) : notificaciones.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             <Bell className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-            <p>No hay notificaciones</p>
+            <p className="font-medium text-sm">No hay notificaciones</p>
+            <p className="text-xs mt-1">Solo de la jornada actual</p>
           </div>
         ) : (
-          notifications.map((notif) => (
-            <DropdownMenuItem key={notif.id} className="p-0 focus:bg-transparent">
-              <div 
-                className={`p-3 w-full ${!notif.leida ? 'bg-blue-50' : ''}`}
+          <div className="divide-y divide-gray-100">
+            {notificaciones.slice(0, 20).map(notif => (
+              <button
+                key={notif.id}
+                onClick={() => handleClick(notif)}
+                className={`w-full text-left p-3 hover:bg-gray-50 transition-colors ${
+                  !notif.leida ? 'bg-blue-50/50' : ''
+                }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5 shrink-0">{getIcon(notif.tipo)}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      <Badge className="bg-green-100 text-green-700 text-[10px] px-1.5 py-0">
+                        {getTipoLabel(notif.tipo)}
+                      </Badge>
+                      {!notif.leida && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
+                    </div>
+                    <p className="text-xs text-gray-900 break-words font-medium">
                       {notif.mensaje}
                     </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(notif.created_at).toLocaleTimeString()}
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      {new Date(notif.created_at).toLocaleString('es-MX', {
+                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                      })}
                     </p>
-                    {notif.pedido && (
-                      <div className="mt-1 text-xs text-gray-600">
-                        <span className="font-medium">Items:</span>{' '}
-                        {notif.pedido.items?.map((item: any) => 
-                          `${item.nombre} x${item.cantidad}`
-                        ).join(', ')}
-                      </div>
-                    )}
                   </div>
-                  {notif.tipo === 'nuevo_pedido' && !notif.leida && (
-                    <Button 
-                      size="sm" 
-                      className="bg-green-600 hover:bg-green-700 text-white flex-shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        acceptOrder(notif)
-                      }}
-                    >
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Aceptar
-                    </Button>
-                  )}
-                  {notif.leida && (
-                    <Badge variant="secondary" className="text-xs flex-shrink-0">
-                      Leída
-                    </Badge>
-                  )}
                 </div>
-              </div>
-            </DropdownMenuItem>
-          ))
+              </button>
+            ))}
+          </div>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

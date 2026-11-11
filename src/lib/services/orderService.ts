@@ -74,6 +74,45 @@ function normalizarNombreMesa(mesa: string | null | undefined): string {
   return mesa.trim().replace(/^mesa\s+/i, '') || 'N/A'
 }
 
+/**
+ * Verifica que haya una sesion de caja abierta en la jornada activa.
+ * Si no hay, lanza excepcion. Nadie vende sin caja abierta.
+ */
+async function verificarSesionCajaAbierta(
+  supabase: ReturnType<typeof createClient>
+): Promise<void> {
+  const { data: jornada } = await supabase
+    .from('jornadas')
+    .select('id')
+    .eq('estado', 'activa')
+    .maybeSingle()
+
+  if (!jornada?.id) {
+    throw new Error(
+      'No hay jornada activa. El administrador debe abrir una jornada.'
+    )
+  }
+
+  const { data: sesion, error } = await supabase
+    .from('sesiones_caja')
+    .select('id, estado')
+    .eq('jornada_id', jornada.id)
+    .eq('estado', 'abierta')
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[orderService] Error consultando sesion_caja:', error)
+    throw new Error('No se pudo verificar la sesion de caja: ' + error.message)
+  }
+
+  if (!sesion?.id) {
+    throw new Error(
+      'No hay sesion de caja abierta. El cajero debe abrir caja antes de vender.'
+    )
+  }
+}
+
 export const orderService = {
   async getOrdersByEstado(estado?: string): Promise<Order[]> {
     const supabase = createClient()
@@ -164,6 +203,9 @@ export const orderService = {
     if (!order.items || order.items.length === 0)
       throw new Error('El pedido debe tener al menos un producto')
     if (order.total <= 0) throw new Error('El total del pedido debe ser mayor a 0')
+
+    // FASE N.2: bloquear ventas sin sesion de caja abierta
+    await verificarSesionCajaAbierta(supabase)
 
     const meseroFinalId = order.meseroAsignadoId || order.mesero_id
 
@@ -345,14 +387,12 @@ export const orderService = {
   async cancelOrder(id: string, motivo: string, usuarioId: string): Promise<void> {
     const supabase = createClient()
 
-    // 1. Cargar datos del pedido antes de cancelarlo (para el mensaje al admin)
     const { data: pedidoInfo } = await supabase
       .from('pedidos')
       .select('id, mesa, total, jornada_id, mesero_id, items')
       .eq('id', id)
       .maybeSingle()
 
-    // 2. Cancelar el pedido
     const { error } = await supabase
       .from('pedidos')
       .update({
@@ -365,7 +405,6 @@ export const orderService = {
       .eq('id', id)
     if (error) throw new Error('No se pudo cancelar el pedido')
 
-    // 3. Notificar a TODOS los admins
     try {
       const { data: admins } = await supabase
         .from('usuarios')
@@ -418,7 +457,6 @@ export const orderService = {
       console.warn('[cancelOrder] Excepcion al notificar admins:', e)
     }
 
-    // 4. Revertir inventario
     try {
       const { data: revResult, error: revError } = await supabase.rpc(
         'revertir_inventario_por_pedido',
