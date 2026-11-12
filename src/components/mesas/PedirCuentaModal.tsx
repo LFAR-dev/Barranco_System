@@ -372,13 +372,18 @@ export function PedirCuentaModal({
             {!esSolicitada && !esCobrando && (
               <Button
                 onClick={handleSolicitarCuenta}
-                disabled={loading}
+                disabled={loading || total <= 0}
                 className="flex-1 bg-amber-500 hover:bg-amber-600"
               >
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Enviando...
+                  </>
+                ) : total <= 0 ? (
+                  <>
+                    <Receipt className="h-4 w-4 mr-2" />
+                    Agrega productos primero
                   </>
                 ) : (
                   <>

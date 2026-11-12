@@ -88,7 +88,7 @@ export const cuentaService = {
   /**
    * Obtiene la cuenta activa de una mesa
    */
-    async getCuentaActiva(mesaId: string, jornadaId?: string): Promise<CuentaAbierta | null> {
+  async getCuentaActiva(mesaId: string, jornadaId?: string): Promise<CuentaAbierta | null> {
     const supabase = createClient()
     let query = supabase
       .from('cuentas_abiertas')
@@ -113,7 +113,7 @@ export const cuentaService = {
    */
   async getCuentaConPedidos(cuentaId: string): Promise<CuentaConPedidos | null> {
     const supabase = createClient()
-    
+
     const { data: cuenta, error: cuentaError } = await supabase
       .from('cuentas_abiertas')
       .select(`
@@ -149,7 +149,7 @@ export const cuentaService = {
   /**
    * Obtiene todas las cuentas activas de un mesero
    */
-    async getCuentasDelMesero(meseroId: string, jornadaId?: string): Promise<CuentaAbierta[]> {
+  async getCuentasDelMesero(meseroId: string, jornadaId?: string): Promise<CuentaAbierta[]> {
     const supabase = createClient()
     let query = supabase
       .from('cuentas_abiertas')
@@ -173,7 +173,7 @@ export const cuentaService = {
   /**
    * Obtiene TODAS las cuentas activas (para caja)
    */
-    async getTodasLasCuentasActivas(jornadaId?: string): Promise<CuentaAbierta[]> {
+  async getTodasLasCuentasActivas(jornadaId?: string): Promise<CuentaAbierta[]> {
     const supabase = createClient()
     let query = supabase
       .from('cuentas_abiertas')
@@ -192,19 +192,18 @@ export const cuentaService = {
     if (error) return []
     return (data || []) as CuentaAbierta[]
   },
+
   /**
    * Agrega un pedido a la cuenta (después de crear el pedido)
    */
   async vincularPedidoACuenta(pedidoId: string, cuentaId: string): Promise<void> {
     const supabase = createClient()
-    
-    // Vincular pedido a cuenta
+
     await supabase
       .from('pedidos')
       .update({ cuenta_abierta_id: cuentaId })
       .eq('id', pedidoId)
 
-    // Recalcular total de la cuenta
     await this.recalcularTotal(cuentaId)
   },
 
@@ -213,7 +212,7 @@ export const cuentaService = {
    */
   async recalcularTotal(cuentaId: string): Promise<void> {
     const supabase = createClient()
-    
+
     const { data: pedidos } = await supabase
       .from('pedidos')
       .select('total')
@@ -224,7 +223,7 @@ export const cuentaService = {
 
     await supabase
       .from('cuentas_abiertas')
-      .update({ 
+      .update({
         total_actual: total,
         updated_at: new Date().toISOString()
       })
@@ -233,12 +232,19 @@ export const cuentaService = {
 
   /**
    * Marca la cuenta como "cuenta solicitada"
+   * FIX: valida que la cuenta tenga productos antes de permitir
    */
   async solicitarCuenta(mesaId: string): Promise<void> {
     const supabase = createClient()
 
     const cuenta = await this.getCuentaActiva(mesaId)
     if (!cuenta) throw new Error('No hay cuenta activa en esta mesa')
+
+    if (Number(cuenta.total_actual) <= 0) {
+      throw new Error(
+        'La cuenta no tiene productos. Agrega al menos un producto antes de pedir la cuenta.'
+      )
+    }
 
     await supabase
       .from('cuentas_abiertas')
@@ -252,9 +258,6 @@ export const cuentaService = {
   },
 
   /**
-   * Marca la cuenta como "cobrando"
-   */
-    /**
    * Registra el cobro del mesero al cliente.
    * NO cierra la cuenta (eso lo hace la caja), solo:
    * - Cambia estado a 'cobrando'
@@ -275,12 +278,13 @@ export const cuentaService = {
         updated_at: new Date().toISOString()
       })
       .eq('id', cuentaId)
-      .eq('estado', 'cuenta_solicitada') // solo si esta solicitada
+      .eq('estado', 'cuenta_solicitada')
 
     if (error) {
       throw new Error('No se pudo registrar el cobro: ' + error.message)
     }
   },
+
   async marcarCobrando(cuentaId: string): Promise<void> {
     const supabase = createClient()
     await supabase
@@ -305,8 +309,8 @@ export const cuentaService = {
 
     const { error } = await supabase
       .from('cuentas_abiertas')
-      .update({ 
-        estado: 'cerrada', 
+      .update({
+        estado: 'cerrada',
         cerrada_en: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -314,14 +318,12 @@ export const cuentaService = {
 
     if (error) throw new Error('No se pudo cerrar la cuenta')
 
-    // Marcar todos los pedidos como servidos
     await supabase
       .from('pedidos')
       .update({ estado: 'servido', updated_at: new Date().toISOString() })
       .eq('cuenta_abierta_id', cuentaId)
       .neq('estado', 'cancelado')
 
-    // Liberar mesa
     await supabase
       .from('mesas')
       .update({
