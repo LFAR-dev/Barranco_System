@@ -7,6 +7,7 @@ import { sesionCajaService, SesionCaja } from '@/lib/services/sesionCajaService'
 // ============================================================
 // HOOK: estado de la sesion de caja abierta
 // Sin sesion de caja, nadie puede vender (ni cajero, ni mesero, ni bartender).
+// Se actualiza en tiempo real via Realtime + polling de respaldo.
 // ============================================================
 
 export function useSesionCaja() {
@@ -14,6 +15,7 @@ export function useSesionCaja() {
   const [sesion, setSesion] = useState<SesionCaja | null>(null)
   const [loading, setLoading] = useState(true)
   const channelRef = useRef<any>(null)
+  const pollingRef = useRef<any>(null)
 
   const cargar = useCallback(async () => {
     try {
@@ -27,6 +29,7 @@ export function useSesionCaja() {
     }
   }, [])
 
+  // Carga inicial + Realtime + polling de respaldo
   useEffect(() => {
     cargar()
 
@@ -36,16 +39,30 @@ export function useSesionCaja() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sesiones_caja' },
-        () => cargar()
+        () => {
+          console.log('[useSesionCaja] Evento Realtime recibido')
+          cargar()
+        }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log('[useSesionCaja] Status Realtime:', status)
+      })
 
     channelRef.current = channel
+
+    // Polling de respaldo cada 15s mientras no haya sesion abierta
+    pollingRef.current = setInterval(() => {
+      cargar()
+    }, 15000)
 
     return () => {
       if (channelRef.current) {
         try { supabase.removeChannel(channelRef.current) } catch {}
         channelRef.current = null
+      }
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
       }
     }
   }, [cargar, supabase])
