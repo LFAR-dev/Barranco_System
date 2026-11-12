@@ -44,6 +44,19 @@ export function useNotificacionesRealtime({
   limite = 50,
   jornadaId
 }: UseNotificacionesRealtimeProps) {
+  // Supabase estable entre renders
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+  if (!supabaseRef.current) {
+    supabaseRef.current = createClient()
+  }
+  const supabase = supabaseRef.current
+
+  // Filtro en ref para que no dispare el useEffect cuando cambia la referencia
+  const filtroRef = useRef(filtro)
+  filtroRef.current = filtro
+  const jornadaIdRef = useRef(jornadaId)
+  jornadaIdRef.current = jornadaId
+
   const [notificaciones, setNotificaciones] = useState<NotificacionRow[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -51,14 +64,18 @@ export function useNotificacionesRealtime({
   const { toast } = useToast()
   const { user } = useAuth()
   const { play } = useNotificationSound({ usuarioId: user?.id })
-  const supabase = createClient()
   const channelRef = useRef<any>(null)
+  const mountedRef = useRef(true)
 
   // Verificar si el filtro es valido (no vacio, no null)
   const filtroValido = !filtro || (filtro.valor && filtro.valor.trim() !== '')
 
   useEffect(() => {
     setIsMounted(true)
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
   }, [])
 
   const reproducirSonido = useCallback(
@@ -90,11 +107,16 @@ export function useNotificacionesRealtime({
   )
 
   const cargar = useCallback(async () => {
-    // Si el filtro esta vacio, no ejecutar query (evita error de UUID)
-    if (!filtroValido) {
-      setNotificaciones([])
-      setUnreadCount(0)
-      setLoading(false)
+    const f = filtroRef.current
+    const jid = jornadaIdRef.current
+    const fValido = !f || (f.valor && f.valor.trim() !== '')
+
+    if (!fValido) {
+      if (mountedRef.current) {
+        setNotificaciones([])
+        setUnreadCount(0)
+        setLoading(false)
+      }
       return
     }
 
@@ -105,65 +127,59 @@ export function useNotificacionesRealtime({
         .order('created_at', { ascending: false })
         .limit(limite)
 
-      if (filtro && filtro.valor) {
-        query = query.eq(filtro.campo, filtro.valor)
+      if (f && f.valor) {
+        query = query.eq(f.campo, f.valor)
       }
 
-      if (jornadaId) {
-        query = query.eq('jornada_id', jornadaId)
+      if (jid) {
+        query = query.eq('jornada_id', jid)
       }
 
       const { data, error } = await query
 
       if (error) {
-        if (
-          error.code === '42501' ||
-          error.message?.includes('permission denied')
-        ) {
+        if (error.code === '42501' || error.message?.includes('permission denied')) {
           console.warn(`Sin permisos para ${tabla}`)
-          setNotificaciones([])
-          setUnreadCount(0)
+          if (mountedRef.current) {
+            setNotificaciones([])
+            setUnreadCount(0)
+          }
           return
         }
         throw error
       }
 
-      setNotificaciones(data || [])
-      setUnreadCount((data || []).filter((n: any) => !n.leida).length)
+      if (mountedRef.current) {
+        setNotificaciones(data || [])
+        setUnreadCount((data || []).filter((n: any) => !n.leida).length)
+      }
     } catch (error) {
       console.error(`Error al cargar ${tabla}:`, error)
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
-  }, [supabase, tabla, filtro, filtroValido, limite, jornadaId])
+  }, [supabase, tabla, limite])
 
   useEffect(() => {
     if (!isMounted) return
 
     cargar()
 
-    const channelName = `${tabla}_${Date.now()}_${Math.random()
-      .toString(36)
-      .slice(2)}`
+    const channelName = `${tabla}_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const channel = supabase
       .channel(channelName)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: tabla
-        },
+        { event: 'INSERT', schema: 'public', table: tabla },
         (payload) => {
           const nueva = payload.new as NotificacionRow
+          const f = filtroRef.current
+          const jid = jornadaIdRef.current
 
-          if (filtro && filtro.valor && nueva[filtro.campo] !== filtro.valor) {
-            return
-          }
+          if (f && f.valor && nueva[f.campo] !== f.valor) return
+          if (jid && nueva.jornada_id !== jid) return
 
-          if (jornadaId && nueva.jornada_id !== jornadaId) {
-            return
-          }
+          if (!mountedRef.current) return
 
           setNotificaciones((prev) => [nueva, ...prev])
           setUnreadCount((prev) => prev + 1)
@@ -185,28 +201,34 @@ export function useNotificacionesRealtime({
       )
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: tabla
-        },
+        { event: 'UPDATE', schema: 'public', table: tabla },
         (payload) => {
           const actualizada = payload.new as NotificacionRow
-          if (filtro && filtro.valor && actualizada[filtro.campo] !== filtro.valor) return
-          if (jornadaId && actualizada.jornada_id !== jornadaId) return
+          const f = filtroRef.current
+          const jid = jornadaIdRef.current
+
+          if (f && f.valor && actualizada[f.campo] !== f.valor) return
+          if (jid && actualizada.jornada_id !== jid) return
+
+          if (!mountedRef.current) return
 
           setNotificaciones((prev) =>
             prev.map((n) => (n.id === actualizada.id ? actualizada : n))
           )
 
-          setNotificaciones((prev) => {
-            setUnreadCount(prev.filter((n) => !n.leida).length)
-            return prev
+          setUnreadCount((prev) => {
+            const lista = notificaciones.map((n) =>
+              n.id === actualizada.id ? actualizada : n
+            )
+            return lista.filter((n) => !n.leida).length
           })
         }
       )
       .subscribe((status) => {
-        console.log(`${tabla}: ${status}`)
+        if (status === 'SUBSCRIBED') {
+          // Recargar al conectar para recuperar eventos perdidos durante reconexion
+          if (mountedRef.current) cargar()
+        }
       })
 
     channelRef.current = channel
@@ -222,7 +244,7 @@ export function useNotificacionesRealtime({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMounted, tabla, filtro?.campo, filtro?.valor, jornadaId])
+  }, [isMounted, tabla])
 
   const marcarLeida = useCallback(
     async (id: string) => {
@@ -242,17 +264,17 @@ export function useNotificacionesRealtime({
 
   const marcarTodasLeidas = useCallback(async () => {
     try {
-      let query = supabase
-        .from(tabla)
-        .update({ leida: true })
-        .eq('leida', false)
+      const f = filtroRef.current
+      const jid = jornadaIdRef.current
 
-      if (filtro && filtro.valor) {
-        query = query.eq(filtro.campo, filtro.valor)
+      let query = supabase.from(tabla).update({ leida: true }).eq('leida', false)
+
+      if (f && f.valor) {
+        query = query.eq(f.campo, f.valor)
       }
 
-      if (jornadaId) {
-        query = query.eq('jornada_id', jornadaId)
+      if (jid) {
+        query = query.eq('jornada_id', jid)
       }
 
       await query
@@ -262,7 +284,7 @@ export function useNotificacionesRealtime({
     } catch (error) {
       console.error('Error al marcar todas:', error)
     }
-  }, [supabase, tabla, filtro, jornadaId])
+  }, [supabase, tabla])
 
   return {
     notificaciones,

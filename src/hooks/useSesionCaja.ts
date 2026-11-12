@@ -6,31 +6,37 @@ import { sesionCajaService, SesionCaja } from '@/lib/services/sesionCajaService'
 
 // ============================================================
 // HOOK: estado de la sesion de caja abierta
-// Sin sesion de caja, nadie puede vender (ni cajero, ni mesero, ni bartender).
 // Se actualiza en tiempo real via Realtime + polling de respaldo.
+// El canal se mantiene estable entre renders (no se recrea).
 // ============================================================
 
 export function useSesionCaja() {
-  const supabase = createClient()
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
+  if (!supabaseRef.current) {
+    supabaseRef.current = createClient()
+  }
+  const supabase = supabaseRef.current
+
   const [sesion, setSesion] = useState<SesionCaja | null>(null)
   const [loading, setLoading] = useState(true)
   const channelRef = useRef<any>(null)
   const pollingRef = useRef<any>(null)
+  const mountedRef = useRef(true)
 
   const cargar = useCallback(async () => {
     try {
       const data = await sesionCajaService.getSesionAbierta()
-      setSesion(data)
+      if (mountedRef.current) setSesion(data)
     } catch (error) {
       console.error('[useSesionCaja] Error al cargar:', error)
-      setSesion(null)
+      if (mountedRef.current) setSesion(null)
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [])
 
-  // Carga inicial + Realtime + polling de respaldo
   useEffect(() => {
+    mountedRef.current = true
     cargar()
 
     const channelName = `sesion_caja_${Date.now()}_${Math.random().toString(36).slice(2)}`
@@ -40,22 +46,24 @@ export function useSesionCaja() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sesiones_caja' },
         () => {
-          console.log('[useSesionCaja] Evento Realtime recibido')
-          cargar()
+          if (mountedRef.current) cargar()
         }
       )
       .subscribe((status) => {
-        console.log('[useSesionCaja] Status Realtime:', status)
+        if (status === 'SUBSCRIBED') {
+          if (mountedRef.current) cargar()
+        }
       })
 
     channelRef.current = channel
 
-    // Polling de respaldo cada 15s mientras no haya sesion abierta
+    // Polling de respaldo cada 10s
     pollingRef.current = setInterval(() => {
-      cargar()
-    }, 15000)
+      if (mountedRef.current) cargar()
+    }, 10000)
 
     return () => {
+      mountedRef.current = false
       if (channelRef.current) {
         try { supabase.removeChannel(channelRef.current) } catch {}
         channelRef.current = null
@@ -65,7 +73,8 @@ export function useSesionCaja() {
         pollingRef.current = null
       }
     }
-  }, [cargar, supabase])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return {
     sesion,
