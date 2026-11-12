@@ -23,6 +23,7 @@ import { orderService, OrderItem } from '@/lib/services/orderService'
 import { BotonReceta } from '@/components/shared/BotonReceta'
 import { cuentaService } from '@/lib/services/cuentaService'
 import { jornadaService } from '@/lib/services/jornadaService'
+import { useSesionCaja } from '@/hooks/useSesionCaja'
 
 const MIXER_AGUA_ID = 'c215aaba-febc-483d-968b-39c4d93c3a6d'
 const MIXER_REFRESCO_ID = '702a33df-688c-4b72-809c-33f9fe318f02'
@@ -97,6 +98,7 @@ export default function NewOrderPage() {
   const ayudando = searchParams.get('ayudando') === 'true'
   const { toast } = useToast()
   const supabase = createClient()
+  const { haySesion: hayCajaAbierta, loading: loadingCaja } = useSesionCaja()
 
   const mesaId = searchParams.get('mesa')
   const cuentaId = searchParams.get('cuenta')
@@ -806,7 +808,7 @@ export default function NewOrderPage() {
                   <Button
                     className="w-full mt-4 bg-orange-600 hover:bg-orange-700 text-white"
                     onClick={handleSubmit}
-                    disabled={loading || cart.length === 0}
+                    disabled={loading || cart.length === 0 || !hayCajaAbierta}
                   >
                     {loading ? (
                       <>
