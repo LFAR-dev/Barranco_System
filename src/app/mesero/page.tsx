@@ -25,6 +25,8 @@ import { AppShell } from '@/components/layout/AppShell'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { SidebarSection } from '@/components/layout/AppSidebar'
 import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
+import { useLimpiarCuentas } from '@/hooks/useLimpiarCuentas'
+import { AvisoSinCaja } from '@/components/shared/AvisoSinCaja'
 
 const SECTIONS: SidebarSection[] = [
   {
@@ -43,6 +45,9 @@ export default function MeseroDashboard() {
   const { toast } = useToast()
   const { jornadaActiva, jornadaId, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
+
+  // Limpiar cuentas abandonadas al cargar la pagina
+  useLimpiarCuentas(30)
 
   const {
     estado: gpsEstado,
@@ -231,6 +236,10 @@ export default function MeseroDashboard() {
           onSalir={() => setIsSalirTurnoOpen(true)}
         />
       )}
+
+      <div className="px-3 sm:px-6 lg:px-8 pt-3">
+        <AvisoSinCaja onSesionAbierta={fetchOrders} />
+      </div>
 
       <AppShell
         rol="mesero"

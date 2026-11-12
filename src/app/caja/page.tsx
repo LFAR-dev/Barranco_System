@@ -27,6 +27,7 @@ import { NotificationBellUniversal } from '@/components/shared/NotificationBellU
 import { PanelCuentasCaja } from '@/components/caja/PanelCuentasCaja'
 import { CobrarCuentaModal } from '@/components/caja/CobrarCuentaModal'
 import { CuentaAbierta } from '@/lib/services/cuentaService'
+import { useLimpiarCuentas } from '@/hooks/useLimpiarCuentas'
 
 const SECTIONS: SidebarSection[] = [
   {
@@ -44,6 +45,9 @@ export default function CajaDashboard() {
   const { toast } = useToast()
   const { jornadaActiva, jornadaId, loading: jornadaLoading } = useJornadaWatcher({ enabled: !!user })
   const { activo: turnoActivo, loading: turnoLoading, recargar: recargarTurno } = useTurnoActivo()
+
+  // Limpiar cuentas abandonadas al cargar la pagina
+  useLimpiarCuentas(30)
   const [pedidos, setPedidos] = useState<Order[]>([])
   const [isSalirTurnoOpen, setIsSalirTurnoOpen] = useState(false)
   const [loading, setLoading] = useState(true)

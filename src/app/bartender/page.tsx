@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/use-toast'
 import { createClient } from '@/lib/supabase/client'
 import { NotificationBellUniversal } from '@/components/shared/NotificationBellUniversal'
+import { AvisoSinCaja } from '@/components/shared/AvisoSinCaja'
 import { orderService } from '@/lib/services/orderService'
 import { wasteService } from '@/lib/services/wasteService'
 import { useJornadaWatcher } from '@/hooks/useJornadaWatcher'
@@ -284,6 +285,10 @@ export default function BartenderDashboard() {
           onSalir={() => setIsSalirTurnoOpen(true)}
         />
       )}
+
+      <div className="px-3 sm:px-6 lg:px-8 pt-3">
+        <AvisoSinCaja onSesionAbierta={fetchPedidos} />
+      </div>
 
       <AppShell
         rol="bartender"
