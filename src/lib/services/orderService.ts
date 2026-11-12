@@ -200,12 +200,14 @@ export const orderService = {
     const supabase = createClient()
 
     if (!order.mesero_id) throw new Error('Se requiere un usuario para crear el pedido')
+
+    // FIX BUG 1: el guard de sesion de caja se ejecuta ANTES de validar items/total.
+    // Asi, si no hay caja abierta, el usuario ve el error correcto sin importar el total.
+    await verificarSesionCajaAbierta(supabase)
+
     if (!order.items || order.items.length === 0)
       throw new Error('El pedido debe tener al menos un producto')
     if (order.total <= 0) throw new Error('El total del pedido debe ser mayor a 0')
-
-    // FASE N.2: bloquear ventas sin sesion de caja abierta
-    await verificarSesionCajaAbierta(supabase)
 
     const meseroFinalId = order.meseroAsignadoId || order.mesero_id
 
@@ -387,24 +389,35 @@ export const orderService = {
   async cancelOrder(id: string, motivo: string, usuarioId: string): Promise<void> {
     const supabase = createClient()
 
+    // FIX BUG 3: validar que usuarioId no sea vacio
+    if (!usuarioId || usuarioId.trim() === '') {
+      throw new Error(
+        'No se pudo identificar al usuario que cancela. Cierra sesion y vuelve a entrar.'
+      )
+    }
+
+    // 1. Cargar datos del pedido antes de cancelarlo (para el mensaje al admin)
     const { data: pedidoInfo } = await supabase
       .from('pedidos')
       .select('id, mesa, total, jornada_id, mesero_id, items')
       .eq('id', id)
       .maybeSingle()
 
+    // 2. Cancelar el pedido guardando QUIEN y CUANDO
+    const ahora = new Date().toISOString()
     const { error } = await supabase
       .from('pedidos')
       .update({
         estado: 'cancelado',
         motivo_cancelacion: motivo,
         cancelado_por: usuarioId,
-        cancelado_en: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        cancelado_en: ahora,
+        updated_at: ahora
       })
       .eq('id', id)
-    if (error) throw new Error('No se pudo cancelar el pedido')
+    if (error) throw new Error('No se pudo cancelar el pedido: ' + error.message)
 
+    // 3. Notificar a TODOS los admins
     try {
       const { data: admins } = await supabase
         .from('usuarios')
@@ -457,6 +470,7 @@ export const orderService = {
       console.warn('[cancelOrder] Excepcion al notificar admins:', e)
     }
 
+    // 4. Revertir inventario
     try {
       const { data: revResult, error: revError } = await supabase.rpc(
         'revertir_inventario_por_pedido',
